@@ -1,0 +1,68 @@
+{
+  "expo": {
+    "name": "KaAgapay",
+    "slug": "kaagapay",
+    "version": "1.0.0",
+    "scheme": "kaagapay",
+    "orientation": "portrait",
+    "icon": "./assets/Ka-agapay-logo.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Kailangan ang camera para sa video consultation sa inyong doktor.",
+        "NSMicrophoneUsageDescription": "Kailangan ang mikropono para ma-marinig ng doktor ang inyong boses.",
+        "NSLocationWhenInUseUsageDescription": "Ginagamit ang lokasyon para sa malapit na RHU events."
+      }
+    },
+    "android": {
+      "package": "com.pogi133.kaagapay",
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "resize",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "READ_PHONE_STATE",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/Ka-agapay-logo.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/Ka-agapay-logo.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Ginagamit ang lokasyon para sa malapit na health events."
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-font"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5ac434b7-443d-4f4c-9e87-8c4a1735aac3"
+      }
+    },
+    "owner": "pogi133"
+  }
+}

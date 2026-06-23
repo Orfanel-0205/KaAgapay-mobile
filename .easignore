@@ -1,0 +1,8 @@
+node_modules/
+.expo/
+eas-inspect/
+dist/
+build/
+android/.gradle/
+android/app/build/
+ios/Pods/
