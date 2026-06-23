@@ -12,7 +12,7 @@ function cleanUrl(url: string): string {
 }
 
 const RAW_API_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? "http://192.168.51.37:8000/api/v1";
+  process.env.EXPO_PUBLIC_API_URL ?? "http://192.168.51.37:8000";
 
 const API_ORIGIN = cleanUrl(RAW_API_URL);
 
