@@ -35,6 +35,7 @@ import ProfileSelectModal, {
 import apiClient from "../services/api/client";
 import { logActivity } from "../services/api/logs";
 import { getProfile, updateProfile } from "../services/api/profile";
+import { resolveProfileCompletion } from "../utils/profileCompletion";
 
 import { useLogout } from "../hooks/useAuth";
 import { useBiometrics } from "../hooks/useBiometrics";
@@ -342,9 +343,9 @@ function localText(key: string, lang: Lang): string {
       en: "Address Details",
     },
     emergency_philhealth: {
-      tl: "Emergency at PhilHealth",
-      pag: "Emergency at PhilHealth",
-      en: "Emergency & PhilHealth",
+      tl: "Guardian / Emergency Contact at PhilHealth",
+      pag: "Guardian / Emergency Contact tan PhilHealth",
+      en: "Guardian / Emergency Contact & PhilHealth",
     },
     health_background: {
       tl: "Kasaysayan ng Kalusugan",
@@ -635,6 +636,8 @@ export default function ProfileScreen() {
   );
 
   const isFemale = String(user?.sex ?? "").trim().toLowerCase().startsWith("f");
+
+  const completion = resolveProfileCompletion(user);
 
   const [editModal, setEditModal] = useState<EditModalState>({
     visible: false,
@@ -1049,6 +1052,104 @@ export default function ProfileScreen() {
           <Text style={styles.barangayText}>{user?.barangay ?? "—"}</Text>
 
           <VerificationBadge verified={!!user?.id_verified} lang={lang} />
+        </View>
+
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: completion.is_complete ? "#ECFDF5" : "#FFFBEB",
+              borderColor: completion.is_complete ? "#A7F3D0" : "#FDE68A",
+              borderWidth: 1,
+            },
+          ]}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Ionicons
+              name={completion.is_complete ? "checkmark-circle" : "alert-circle"}
+              size={22}
+              color={completion.is_complete ? "#047857" : "#B45309"}
+            />
+            <Text
+              style={{
+                flex: 1,
+                fontWeight: "900",
+                fontSize: 15,
+                color: completion.is_complete ? "#047857" : "#92400E",
+              }}
+            >
+              Profile Completion — {completion.percent}%
+            </Text>
+          </View>
+
+          <View
+            style={{
+              height: 8,
+              borderRadius: 999,
+              backgroundColor: "#E5E7EB",
+              marginTop: 10,
+              overflow: "hidden",
+            }}
+          >
+            <View
+              style={{
+                width: `${Math.max(4, Math.min(100, completion.percent))}%`,
+                height: "100%",
+                backgroundColor: completion.is_complete ? "#10B981" : "#F59E0B",
+              }}
+            />
+          </View>
+
+          {!completion.is_complete ? (
+            <>
+              <Text
+                style={{ color: "#92400E", marginTop: 10, fontSize: 13, lineHeight: 19 }}
+              >
+                {completion.message}
+              </Text>
+
+              {completion.missing_labels.length > 0 ? (
+                <Text
+                  style={{ color: "#92400E", marginTop: 6, fontSize: 12, fontWeight: "700" }}
+                >
+                  Missing: {completion.missing_labels.join(", ")}
+                </Text>
+              ) : null}
+
+              <TouchableOpacity
+                onPress={() =>
+                  Alert.alert(
+                    "Complete Missing Information",
+                    completion.missing_labels.length > 0
+                      ? "Tap each field below to fill it in:\n\n• " +
+                          completion.missing_labels.join("\n• ")
+                      : "Please review and complete your profile fields below."
+                  )
+                }
+                activeOpacity={0.85}
+                style={{
+                  marginTop: 12,
+                  alignSelf: "flex-start",
+                  backgroundColor: "#B45309",
+                  borderRadius: 12,
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <Ionicons name="create-outline" size={16} color="#FFFFFF" />
+                <Text style={{ color: "#FFFFFF", fontWeight: "800", fontSize: 13 }}>
+                  Complete Missing Information
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text style={{ color: "#047857", marginTop: 10, fontSize: 13 }}>
+              Your health profile is complete. You can book a consultation.
+            </Text>
+          )}
         </View>
 
         <View style={styles.card}>

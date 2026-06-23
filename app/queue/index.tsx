@@ -28,8 +28,10 @@ function labelStatus(value?: string) {
   const status = String(value ?? "waiting").toLowerCase();
 
   if (status === "called") return "Being Called";
+  if (status === "in_service") return "Now Serving";
   if (status === "serving") return "Now Serving";
   if (status === "waiting") return "Waiting";
+  if (status === "done") return "Completed";
   if (status === "completed") return "Completed";
   if (status === "skipped") return "Skipped";
   if (status === "no_show") return "No Show";
@@ -67,6 +69,7 @@ export default function QueueStatusScreen() {
 
   const status = String(ticket?.status ?? "").toLowerCase();
   const isCalled = status === "called" || status === "serving";
+  const isCompleted = status === "completed" || status === "done";
 
   return (
     <>
@@ -137,9 +140,36 @@ export default function QueueStatusScreen() {
               borderRadius: 24,
               padding: 22,
               borderWidth: 1,
-              borderColor: isCalled ? "#14B8A6" : "#E5E7EB",
+              borderColor: isCalled || isCompleted ? "#14B8A6" : "#E5E7EB",
             }}
           >
+            {isCompleted ? (
+              <View
+                style={{
+                  backgroundColor: "#ECFDF5",
+                  borderRadius: 18,
+                  padding: 16,
+                  marginBottom: 18,
+                  borderWidth: 1,
+                  borderColor: "#99F6E4",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 20,
+                    fontWeight: "900",
+                    color: "#065F46",
+                  }}
+                >
+                  Your consultation/service is completed. Thank you.
+                </Text>
+
+                <Text style={{ fontSize: 15, color: "#047857", marginTop: 6 }}>
+                  You may leave the RHU after staff gives any final instructions.
+                </Text>
+              </View>
+            ) : null}
+
             {isCalled ? (
               <View
                 style={{

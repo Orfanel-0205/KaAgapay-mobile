@@ -66,7 +66,12 @@ export interface QueueStatus {
   ticket_number: string | null;
   position: number | null;
   estimated_wait_minutes: number | null;
-  status: "waiting" | "called" | "serving" | "done" | null;
+  status: "waiting" | "called" | "serving" | "completed" | "done" | null;
+  rhu_id?: number | null;
+  rhu_name?: string | null;
+  service_type?: string | null;
+  service_label?: string | null;
+  source?: string | null;
 }
 
 export interface DashboardData {
@@ -117,15 +122,18 @@ export interface Consultation {
 // Patient profile (reusable, non-clinical ITR details)
 // --------------------------------------------------------------------------
 export interface ResidentProfileFields {
+  middle_name?: string | null;
   civil_status?: string | null;
   religion?: string | null;
   educational_attainment?: string | null;
   occupation?: string | null;
   client_type?: string | null;
   guardian_name?: string | null;
+  guardian_birthdate?: string | null;
   emergency_contact_name?: string | null;
   emergency_contact_number?: string | null;
   philhealth_number?: string | null;
+  blood_type?: string | null;
   street?: string | null;
   purok?: string | null;
   household_number?: string | null;
@@ -140,6 +148,23 @@ export interface ResidentProfileFields {
   menstrual_history?: string | null;
   family_planning_method?: string | null;
   pregnancy_history?: string | null;
+  number_of_children?: string | null;
+  period_duration?: string | null;
+  cycle?: string | null;
+  menopausal_age?: string | null;
+}
+
+// Mandatory-profile gating for consultation booking (computed by the backend).
+export interface ProfileCompletion {
+  is_complete: boolean;
+  can_book_consultation: boolean;
+  percent: number;
+  missing_fields: string[];
+  missing_labels?: string[];
+  philhealth_present?: boolean;
+  philhealth_verified?: boolean;
+  philhealth_warning?: string | null;
+  message?: string;
 }
 
 // Keys the patient is allowed to update through the profile endpoint.

@@ -554,7 +554,22 @@ export default function RegisterScreen() {
             method: "mobile_number",
           });
 
-          router.replace("/(tabs)/home");
+          // PART C: remind the resident to complete their ITR health profile.
+          Alert.alert(
+            "Account created",
+            "Your account was created. Please complete your health profile before booking a consultation.",
+            [
+              {
+                text: "Later",
+                style: "cancel",
+                onPress: () => router.replace("/(tabs)/home"),
+              },
+              {
+                text: "Complete Profile",
+                onPress: () => router.replace("/(tabs)/profile" as any),
+              },
+            ]
+          );
         },
 
         onError: (err) => {

@@ -1,6 +1,6 @@
 // services/api/queue.ts
 // Mobile queue API helper.
-// Safely returns null when the resident has no active queue ticket
+// Safely returns null when the resident has no queue ticket for today
 // or no resident profile yet.
 
 import apiClient from "./client";
@@ -12,7 +12,7 @@ function normalizeStatus(value: any): QueueStatus["status"] {
   if (status === "waiting") return "waiting";
   if (status === "called") return "called";
   if (status === "in_service" || status === "serving") return "serving";
-  if (status === "completed" || status === "done") return "done";
+  if (status === "completed" || status === "done") return "completed";
 
   return null;
 }
@@ -45,6 +45,14 @@ function normalizeQueueTicket(raw: any): QueueStatus {
             : null,
 
     status: normalizeStatus(raw?.status),
+    rhu_id:
+      raw?.rhu_id !== undefined && raw?.rhu_id !== null
+        ? Number(raw.rhu_id)
+        : null,
+    rhu_name: raw?.rhu_name ?? raw?.rhu?.name ?? raw?.rhu?.barangay_name ?? null,
+    service_type: raw?.service_type ?? raw?.service ?? null,
+    service_label: raw?.service_label ?? null,
+    source: raw?.source ?? null,
   };
 }
 

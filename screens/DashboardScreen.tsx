@@ -32,6 +32,11 @@ import {
   type MyEventRegistration,
 } from "../services/api/eventRegistrations";
 import { fetchUnreadNotificationCount } from "../services/api/notifications";
+import { getProfile } from "../services/api/profile";
+import {
+  resolveProfileCompletion,
+  type ProfileCompletion,
+} from "../utils/profileCompletion";
 import type { DashboardData, QueueStatus } from "../types/api";
 
 import { useAuthStore } from "../store/useAuthStore";
@@ -611,6 +616,17 @@ export default function DashboardScreen() {
     refetchInterval: 15000,
   });
 
+  const { data: profileData } = useQuery({
+    queryKey: ["mobile-profile-completion"],
+    queryFn: getProfile,
+    retry: false,
+    refetchInterval: 30000,
+  });
+
+  const completion: ProfileCompletion = resolveProfileCompletion(
+    profileData ?? user
+  );
+
   const {
     data: unreadNotifications = 0,
     refetch: refetchUnreadNotifications,
@@ -785,6 +801,37 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.mainContent}>
+          {!completion.can_book_consultation ? (
+            <View style={styles.profileBanner}>
+              <View style={styles.profileBannerRow}>
+                <Ionicons name="alert-circle" size={adaptive.size(22)} color="#B45309" />
+                <Text style={styles.profileBannerTitle}>
+                  Complete your health profile ({completion.percent}%)
+                </Text>
+              </View>
+
+              <Text style={styles.profileBannerText}>
+                {completion.message}
+              </Text>
+
+              {completion.missing_labels && completion.missing_labels.length > 0 ? (
+                <Text style={styles.profileBannerMissing}>
+                  Missing: {completion.missing_labels.slice(0, 3).join(", ")}
+                  {completion.missing_labels.length > 3 ? "…" : ""}
+                </Text>
+              ) : null}
+
+              <TouchableOpacity
+                onPress={() => router.push("/(tabs)/profile" as any)}
+                activeOpacity={0.85}
+                style={styles.profileBannerButton}
+              >
+                <Ionicons name="person-circle-outline" size={adaptive.size(18)} color="#FFFFFF" />
+                <Text style={styles.profileBannerButtonText}>Complete Profile</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           <QueueOrTicketCard
             queue={clinicQueue}
             eventTicket={activeEventTicket}
@@ -932,6 +979,53 @@ const makeStyles = (adaptive: ReturnType<typeof useAdaptive>) =>
       alignSelf: "center",
       paddingHorizontal: adaptive.horizontal,
       paddingTop: adaptive.size(16),
+    },
+    profileBanner: {
+      backgroundColor: "#FFFBEB",
+      borderColor: "#FDE68A",
+      borderWidth: 1,
+      borderRadius: adaptive.size(18),
+      padding: adaptive.size(14),
+      marginBottom: adaptive.size(14),
+    },
+    profileBannerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: adaptive.size(8),
+    },
+    profileBannerTitle: {
+      flex: 1,
+      color: "#92400E",
+      fontWeight: "900",
+      fontSize: adaptive.size(15),
+    },
+    profileBannerText: {
+      color: "#92400E",
+      marginTop: adaptive.size(6),
+      fontSize: adaptive.size(13),
+      lineHeight: adaptive.size(19),
+    },
+    profileBannerMissing: {
+      color: "#92400E",
+      marginTop: adaptive.size(4),
+      fontSize: adaptive.size(12),
+      fontWeight: "700",
+    },
+    profileBannerButton: {
+      marginTop: adaptive.size(10),
+      alignSelf: "flex-start",
+      backgroundColor: "#B45309",
+      borderRadius: adaptive.size(12),
+      paddingHorizontal: adaptive.size(14),
+      paddingVertical: adaptive.size(9),
+      flexDirection: "row",
+      alignItems: "center",
+      gap: adaptive.size(6),
+    },
+    profileBannerButtonText: {
+      color: "#FFFFFF",
+      fontWeight: "800",
+      fontSize: adaptive.size(13),
     },
     statusCard: {
       backgroundColor: BRAND_CARD,

@@ -50,6 +50,20 @@ export interface User {
   menstrual_history?: string | null;
   family_planning_method?: string | null;
   pregnancy_history?: string | null;
+
+  // Mandatory-profile gating (computed by the backend on GET /profile).
+  philhealth_verified_at?: string | null;
+  profile_completion?: {
+    is_complete: boolean;
+    can_book_consultation: boolean;
+    percent: number;
+    missing_fields: string[];
+    missing_labels?: string[];
+    philhealth_present?: boolean;
+    philhealth_verified?: boolean;
+    philhealth_warning?: string | null;
+    message?: string;
+  };
 }
 
 interface AuthState {
