@@ -26,6 +26,7 @@ downloadPrescriptionPdfToDevice,
 fetchMyPrescriptions,
 getMedicationSubtitle,
 getMedicationTitle,
+summarizeLabTests,
 type MedicationItem,
 type Prescription,
 } from "../../services/api/prescriptions";
@@ -176,12 +177,14 @@ const lang = useLang();
 const [downloading, setDownloading] = React.useState(false);
 
 const colors = statusColors(item.status);
+const isLabRequest = String(item.form_type || "medicine") === "lab_request";
 const medicines = Array.isArray(item.medications)
 ? (item.medications as MedicationItem[])
 : [];
 
 const prescriptionTitle =
-item.prescription_number || "Prescription #" + String(item.id);
+item.prescription_number ||
+(isLabRequest ? "Lab Request #" : "Prescription #") + String(item.id);
 
 const validUntilText = item.valid_until
 ? " · " + tr("valid_until", lang) + " " + formatDate(item.valid_until)
@@ -233,7 +236,7 @@ backgroundColor: "#ECFDF5",
 alignItems: "center",
 justifyContent: "center",
 }}
-> <Ionicons name="medkit" size={24} color="#10B981" /> </View>
+> <Ionicons name={isLabRequest ? "document-text" : "medkit"} size={24} color="#10B981" /> </View>
 
 
     <View style={{ flex: 1 }}>
@@ -259,6 +262,29 @@ justifyContent: "center",
           <Text style={{ color: "#6B7280", marginTop: 4, fontSize: 20 }}>
             {formatDate(item.prescription_date) + validUntilText}
           </Text>
+
+          <View
+            style={{
+              alignSelf: "flex-start",
+              marginTop: 8,
+              backgroundColor: isLabRequest ? "#E0F2FE" : "#ECFDF5",
+              borderColor: isLabRequest ? "#BAE6FD" : "#A7F3D0",
+              borderWidth: 1,
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderRadius: 999,
+            }}
+          >
+            <Text
+              style={{
+                color: isLabRequest ? "#0369A1" : "#047857",
+                fontWeight: "900",
+                fontSize: 16,
+              }}
+            >
+              {isLabRequest ? "Lab Request" : "Medicine Prescription"}
+            </Text>
+          </View>
         </View>
 
         <View
@@ -284,6 +310,7 @@ justifyContent: "center",
         </View>
       </View>
 
+      {isLabRequest && (
       <View style={{ marginTop: 12 }}>
         <Text
           style={{
@@ -293,7 +320,45 @@ justifyContent: "center",
             marginBottom: 6,
           }}
         >
-          {tr("label_diagnosis", lang)}
+          Requested Tests
+        </Text>
+
+        <Text style={{ color: "#4B5563", lineHeight: 20 }}>
+          {summarizeLabTests(item.lab_tests)}
+        </Text>
+
+        {!!item.priority && (
+          <Text style={{ color: "#6B7280", marginTop: 6, fontSize: 18 }}>
+            {"Priority: " + item.priority}
+          </Text>
+        )}
+
+        {!!item.request_reason && (
+          <Text style={{ color: "#4B5563", marginTop: 6, lineHeight: 20 }}>
+            {"Reason: " + item.request_reason}
+          </Text>
+        )}
+
+        {!!item.request_notes && (
+          <Text style={{ color: "#4B5563", marginTop: 6, lineHeight: 20 }}>
+            {"Notes: " + item.request_notes}
+          </Text>
+        )}
+      </View>
+      )}
+
+      {!isLabRequest && (
+      <>
+      <View style={{ marginTop: 12 }}>
+        <Text
+          style={{
+            color: "#374151",
+            fontWeight: "800",
+            fontSize: 20,
+            marginBottom: 6,
+          }}
+        >
+          {isLabRequest ? "Clinical Impression" : tr("label_diagnosis", lang)}
         </Text>
 
         <Text style={{ color: "#4B5563", lineHeight: 20 }}>
@@ -393,6 +458,8 @@ justifyContent: "center",
             {item.additional_instructions}
           </Text>
         </View>
+      )}
+      </>
       )}
 
       <View

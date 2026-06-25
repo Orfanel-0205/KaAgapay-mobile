@@ -573,14 +573,14 @@ export const STRINGS: Dict = {
     en: "Medical Records",
   },
   records_subtitle: {
-    tl: "Mga reseta, gamot, consultation, at tala ng paggamot.",
-    pag: "Saray reseta, tambal, konsultasyon, tan tala na panangtambal.",
-    en: "Prescriptions, medicines, consultations, and treatment notes.",
+    tl: "Mga reseta, lab request, consultation, at tala ng paggamot.",
+    pag: "Saray reseta, lab request, konsultasyon, tan tala na panangtambal.",
+    en: "Prescriptions, lab requests, consultations, and treatment notes.",
   },
   tab_prescriptions: {
-    tl: "Mga Reseta",
-    pag: "Saray Reseta",
-    en: "Prescriptions",
+    tl: "Reseta / Lab Request",
+    pag: "Reseta / Lab Request",
+    en: "Prescription / Lab Request",
   },
   tab_consultations: {
     tl: "Mga Consultation",
@@ -593,14 +593,14 @@ export const STRINGS: Dict = {
     en: "Loading records...",
   },
   empty_prescriptions_title: {
-    tl: "Wala pang reseta",
-    pag: "Anggapo ni reseta",
-    en: "No prescriptions yet",
+    tl: "Wala pang reseta o lab request",
+    pag: "Anggapo ni reseta odino lab request",
+    en: "No prescriptions or lab requests yet",
   },
   empty_prescriptions_body: {
-    tl: "Lalabas dito ang gamot at reseta pagkatapos ng consultation.",
-    pag: "Ompaway dia so tambal tan reseta kayari na konsultasyon.",
-    en: "Your medicines and prescriptions will appear here after consultation.",
+    tl: "Lalabas dito ang reseta at lab request pagkatapos ng consultation.",
+    pag: "Ompaway dia so reseta tan lab request kayari na konsultasyon.",
+    en: "Your prescriptions and lab requests will appear here after consultation.",
   },
   empty_consultations_title: {
     tl: "Wala pang consultation",

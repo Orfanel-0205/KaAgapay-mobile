@@ -381,13 +381,17 @@ export default function CreateAppointmentScreen() {
         preferred_time: formatTime(preferredTime),
       });
 
-      Alert.alert("Success", "Appointment request submitted.", [
-        {
-          text: "View Appointment",
-          onPress: () =>
-            router.replace(("/appointments/" + String(appointment.id)) as any),
-        },
-      ]);
+      Alert.alert(
+        "Appointment request sent",
+        "Please wait for RHU approval. You will be notified once it is approved or scheduled.",
+        [
+          {
+            text: "View My Appointments",
+            onPress: () =>
+              router.replace(("/appointments/" + String(appointment.id)) as any),
+          },
+        ]
+      );
     } catch (error: any) {
       Alert.alert(
         "Error",

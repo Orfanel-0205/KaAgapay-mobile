@@ -29,18 +29,35 @@
     brand_alternatives_allowed?: boolean;
     }
 
+    export interface LabTestsInput {
+    laboratory: string[];
+    xray: string[];
+    ultrasound: string[];
+    others: {
+        laboratory?: string;
+        xray?: string;
+        ultrasound?: string;
+    };
+    }
+
     export interface Prescription {
     id: number;
     resident_profile_id?: number;
     prescribed_by?: number;
     consultation_id?: number | null;
     telemedicine_session_id?: number | null;
+    form_type?: "medicine" | "lab_request" | string | null;
     prescription_number?: string;
     rhu_id?: number;
     prescription_date?: string | null;
     valid_until?: string | null;
     diagnosis?: string | null;
     diagnosis_code?: string | null;
+    clinical_impression?: string | null;
+    request_reason?: string | null;
+    priority?: string | null;
+    request_notes?: string | null;
+    lab_tests?: LabTestsInput | null;
     medications?: MedicationItem[] | string[];
     additional_instructions?: string | null;
     dispensing_notes?: string | null;
@@ -92,11 +109,44 @@
     return [];
     }
 
+    function normalizeLabTests(raw: any): LabTestsInput | null {
+    let value = raw;
+
+    if (typeof value === "string") {
+        try {
+        value = JSON.parse(value);
+        } catch {
+        value = null;
+        }
+    }
+
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+
+    return {
+        laboratory: Array.isArray(value.laboratory)
+        ? value.laboratory.map(String)
+        : [],
+        xray: Array.isArray(value.xray) ? value.xray.map(String) : [],
+        ultrasound: Array.isArray(value.ultrasound)
+        ? value.ultrasound.map(String)
+        : [],
+        others: {
+        laboratory: value.others?.laboratory || "",
+        xray: value.others?.xray || "",
+        ultrasound: value.others?.ultrasound || "",
+        },
+    };
+    }
+
     function normalizePrescription(raw: any): Prescription {
     return {
         ...raw,
         id: Number(raw?.id),
         medications: normalizeMedications(raw?.medications),
+        form_type: raw?.form_type || "medicine",
+        lab_tests: normalizeLabTests(raw?.lab_tests),
     };
     }
 
@@ -275,4 +325,21 @@
     ]
         .filter(Boolean)
         .join(" · ");
+    }
+
+    export function summarizeLabTests(labTests?: LabTestsInput | null): string {
+    if (!labTests) return "No requested tests listed.";
+
+    const tests = [
+        ...labTests.laboratory,
+        ...labTests.xray,
+        ...labTests.ultrasound,
+        labTests.others.laboratory,
+        labTests.others.xray,
+        labTests.others.ultrasound,
+    ]
+        .filter(Boolean)
+        .map(String);
+
+    return tests.length ? tests.join(", ") : "No requested tests listed.";
     }

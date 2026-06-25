@@ -40,6 +40,24 @@ function labelStatus(value?: string) {
   return status;
 }
 
+// Plain-language "What should I do?" guidance for each queue status.
+function statusHelp(value?: string): string {
+  const status = String(value ?? "waiting").toLowerCase();
+
+  if (status === "waiting") return "Please wait for your number to be called.";
+  if (status === "called" || status === "serving")
+    return "Please proceed to the RHU desk now.";
+  if (status === "in_service") return "You are currently being served.";
+  if (status === "completed" || status === "done") return "Your service is done.";
+  if (status === "skipped")
+    return "You were skipped for now. Stay nearby — RHU staff may call you again.";
+  if (status === "no_show")
+    return "You were marked absent. Please ask RHU staff for help.";
+  if (status === "cancelled") return "This queue ticket was cancelled.";
+
+  return "Please wait for instructions from RHU staff.";
+}
+
 export default function QueueStatusScreen() {
   const [ticket, setTicket] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -203,15 +221,35 @@ export default function QueueStatusScreen() {
 
             <Text
               style={{
-                fontSize: 34,
+                fontSize: 56,
                 fontWeight: "900",
-                color: "#0F172A",
-                marginTop: 4,
-                marginBottom: 18,
+                color: "#0F766E",
+                marginTop: 2,
+                marginBottom: 14,
               }}
             >
               {ticket.ticket_number ?? ticket.queue_number ?? "—"}
             </Text>
+
+            <View
+              style={{
+                backgroundColor: "#F0FDFA",
+                borderRadius: 16,
+                padding: 14,
+                marginBottom: 18,
+                borderWidth: 1,
+                borderColor: "#CCFBF1",
+              }}
+            >
+              <Text
+                style={{ fontSize: 13, fontWeight: "800", color: "#0F766E", marginBottom: 4 }}
+              >
+                What should I do?
+              </Text>
+              <Text style={{ fontSize: 16, color: "#0F172A", lineHeight: 22 }}>
+                {statusHelp(ticket.status)}
+              </Text>
+            </View>
 
             <Info label="Status" value={labelStatus(ticket.status)} />
             <Info
@@ -251,12 +289,29 @@ export default function QueueStatusScreen() {
                 color: "#0F172A",
               }}
             >
-              No active queue ticket
+              No queue number yet
             </Text>
 
-            <Text style={{ fontSize: 16, color: "#64748B", marginTop: 8 }}>
-              You do not have an active queue ticket right now.
+            <Text style={{ fontSize: 16, color: "#64748B", marginTop: 8, lineHeight: 23 }}>
+              Your queue number will appear here after the RHU approves your
+              appointment or creates your ticket. Please check again later.
             </Text>
+
+            <TouchableOpacity
+              onPress={() => router.push("/appointments" as any)}
+              activeOpacity={0.85}
+              style={{
+                marginTop: 18,
+                backgroundColor: "#0D9488",
+                borderRadius: 14,
+                paddingVertical: 14,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: "#FFFFFF", fontWeight: "800", fontSize: 16 }}>
+                Check My Appointments
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
