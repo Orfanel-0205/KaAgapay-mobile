@@ -9,7 +9,13 @@ import { logActivity } from "../../services/api/logs";
 
 export interface TelemedicineSession {
   id: number;
-  room_id: string;
+  /**
+   * The URL to actually open. It carries the JaaS JWT and is only ever taken
+   * from the backend's `video.join_url`. Null when the backend did not issue a
+   * usable room, in which case joining must fail loudly rather than fall back
+   * to an unauthenticated public room.
+   */
+  join_url: string | null;
   doctor_name: string;
   doctor_specialty: string;
   scheduled_at: string;
@@ -23,6 +29,17 @@ interface BackendTelemedicineSession {
   session_mode?: string;
   session_token?: string | null;
   session_link?: string | null;
+  room_name?: string | null;
+  // Canonical video provider config from the backend (WebRtcService). The mobile
+  // app MUST open this exact room so it joins the SAME Jitsi room as RHU staff.
+  video?: {
+    room_url?: string | null;
+    join_url?: string | null;
+    url?: string | null;
+    is_demo?: boolean;
+    configured?: boolean;
+    demo_warning?: string | null;
+  } | null;
   schedule?: {
     date?: string | null;
     time?: string | null;
@@ -34,16 +51,29 @@ interface BackendTelemedicineSession {
   } | null;
 }
 
-const JITSI_HOST = "https://meet.jit.si";
+/*
+ * There is deliberately NO fallback host here.
+ *
+ * This used to fall back to https://meet.jit.si/<room-name>, which sent the
+ * resident to a completely different service from the one RHU staff were in --
+ * an unauthenticated public room with the same name, on a provider the RHU does
+ * not control. A patient could sit alone in a public room believing they were
+ * in a consultation. Failing to join is the safer outcome.
+ */
 
-function buildJitsiUrl(roomId: string): string {
-  if (roomId.startsWith("http")) {
-    return roomId;
+/**
+ * The only URL a client may open. `join_url` carries the JaaS JWT; `room_url` is
+ * the token-free form the backend emits for display and logging, and joining
+ * with it is rejected by an authenticated JaaS tenant.
+ */
+function resolveJoinUrl(video: BackendTelemedicineSession["video"]): string | null {
+  const joinUrl = String(video?.join_url || "").trim();
+
+  if (!joinUrl) {
+    return null;
   }
 
-  const safeRoom = roomId.replace(/[^a-zA-Z0-9_-]/g, "");
-
-  return `${JITSI_HOST}/${safeRoom}`;
+  return joinUrl;
 }
 
 function mapBackendStatus(status?: string): TelemedicineSession["status"] {
@@ -72,12 +102,19 @@ function buildScheduledAt(item: BackendTelemedicineSession): string {
 }
 
 function normalizeSession(item: BackendTelemedicineSession): TelemedicineSession {
+  /*
+   * Only ever `video.join_url`.
+   *
+   * This previously preferred `video.room_url`, which the backend documents as
+   * "token-free (safe to display/log)". Opening it against the authenticated
+   * 8x8 JaaS tenant means joining with no JWT, which the tenant rejects -- the
+   * same defect already found and fixed in Team Chat calling. The remaining
+   * fallbacks (room_name, session_token) were bare room NAMES, not URLs, which
+   * is what fed the public meet.jit.si fallback above.
+   */
   return {
     id: Number(item.id),
-    room_id:
-      item.session_link ||
-      item.session_token ||
-      `kaagapay-session-${item.id}`,
+    join_url: resolveJoinUrl(item.video),
     doctor_name: item.assigned_doctor?.name || "RHU Doctor",
     doctor_specialty: "General Medicine",
     scheduled_at: buildScheduledAt(item),
@@ -139,7 +176,28 @@ export function useTelemedicine() {
     TelemedicineSession
   >({
     mutationFn: async (session: TelemedicineSession) => {
-      const url = buildJitsiUrl(session.room_id);
+      /*
+       * Mint the token AT JOIN TIME, matching how Team Chat calling works.
+       *
+       * The list endpoint also issues a JWT for every session it returns, but
+       * that list is polled on a timer and cached, so a token taken from it can
+       * already be older than JITSI_JWT_TTL_MINUTES by the time someone taps
+       * Join. Re-fetching the single session gives a token minted seconds ago,
+       * and the backend authorises the caller as a participant on that same
+       * request.
+       */
+      const fresh = await apiClient
+        .get(`/telemedicine/sessions/${session.id}`)
+        .then((res) => normalizeSession(res.data?.data ?? res.data))
+        .catch(() => null);
+
+      const url = fresh?.join_url ?? session.join_url;
+
+      if (!url) {
+        throw new Error(
+          "Hindi pa handa ang video room para sa consultation na ito. Pakitawagan ang RHU."
+        );
+      }
 
       const canOpen = await Linking.canOpenURL(url).catch(() => false);
 
@@ -153,9 +211,10 @@ export function useTelemedicine() {
 
       await Linking.openURL(url);
 
+      // The URL carries a signed token, so it is never logged. The session id
+      // is enough to correlate this with the backend's own records.
       await logActivity("TELEMEDICINE_JOINED", {
         session_id: session.id,
-        room_id: session.room_id,
         doctor_name: session.doctor_name,
       });
 
