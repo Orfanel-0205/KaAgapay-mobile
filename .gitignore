@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# credentials - never commit
+.env
+google-services.json
+fcm-service-account.json
