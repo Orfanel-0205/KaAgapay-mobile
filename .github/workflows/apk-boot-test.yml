@@ -23,8 +23,15 @@
 #   2. the visible UI does NOT contain "Unmatched" (the 2026-09-03 failure)
 #   3. the visible UI has real content, not a blank or error-only screen
 #
-# It builds a DEBUG apk on purpose: a boot test needs no release signing keys,
-# so this workflow requires no secrets at all.
+# It builds a RELEASE apk. That is not for realism alone -- a DEBUG apk does not
+# embed the JS bundle (there is no bundleInDebug in the react {} block), so it
+# expects a Metro dev server that does not exist in CI and boots straight into
+# React Native's red-box error screen. Release builds embed the bundle via
+# `export:embed`, the same path EAS uses for the APKs that actually ship.
+#
+# This still needs no secrets: Expo's generated template sets
+# `release { signingConfig signingConfigs.debug }`, so a release build signs
+# itself with the debug keystore.
 
 name: APK boot test
 
@@ -73,9 +80,9 @@ jobs:
           EXPO_BASE_URL: ''
         run: npx expo prebuild --platform android --clean
 
-      - name: Build debug APK
+      - name: Build release APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       # Emulator hardware acceleration; without this the emulator is too slow
       # to be usable in CI.

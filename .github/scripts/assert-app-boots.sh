@@ -2,7 +2,7 @@
 #
 # .github/scripts/assert-app-boots.sh
 #
-# Installs the debug APK on the running emulator, launches it, and asserts it
+# Installs the release APK on the running emulator, launches it, and asserts it
 # reaches a real screen. Called by .github/workflows/apk-boot-test.yml inside
 # reactivecircus/android-emulator-runner (the emulator is already booted).
 #
@@ -17,7 +17,7 @@
 set -uo pipefail
 
 PACKAGE="com.pogi133.kaagapay"
-APK="android/app/build/outputs/apk/debug/app-debug.apk"
+APK="android/app/build/outputs/apk/release/app-release.apk"
 ARTIFACTS="boot-artifacts"
 
 # How long to let the app settle before inspecting it. Expo Router resolves its
@@ -110,39 +110,52 @@ fi
 
 echo "ok: no 'Unmatched' text on screen"
 
-# --- Assertion 3: a real screen actually rendered ---------------------------
+# --- Assertion 3: not a React Native error screen ---------------------------
+#
+# ADDED AFTER A FALSE PASS. On this test's first real run it reported success
+# while the app was actually showing React Native's red-box error screen -- the
+# APK had no embedded JS bundle, so it could not start. The old checks all
+# passed anyway: the process stays alive on a red box, RN catches the failure so
+# nothing logs FATAL EXCEPTION, the word "Unmatched" is absent, and a rendered
+# Java stack trace easily clears a "has some text" threshold.
+#
+# A test that green-lights a broken app is worse than no test. These markers are
+# what that screen actually contained.
 
 echo ""
-echo "--- Assertion 3: a real screen rendered"
+echo "--- Assertion 3: not a React Native error screen"
+
+if grep -qiE 'text="[^"]*(loadJSBundleFromAssets|Unable to load script|Could not connect to development server|ReactInstance|com\.facebook\.react|\.kt"|\.java")' "$UI_XML"; then
+  echo "--- visible text on screen ---"
+  grep -oE 'text="[^"]*"' "$UI_XML" | sed 's/^/  /' | head -25
+  fail "the app is showing React Native's error screen, not the app. Stack-trace text is on screen. Most likely the APK has no embedded JS bundle -- a debug build does not embed one (no bundleInDebug), so this must be a RELEASE build."
+fi
+
+echo "ok: no React Native error-screen markers"
+
+# --- Assertion 4: the expected first screen actually rendered ---------------
+
+echo ""
+echo "--- Assertion 4: the expected first screen rendered"
 
 TEXT_NODES=$(grep -oE 'text="[^"]+"' "$UI_XML" | grep -vE 'text=""' | wc -l)
 echo "visible text nodes: $TEXT_NODES"
 
-# A splash screen or blank/error view yields almost nothing. A real screen has
-# labels, buttons and inputs. Threshold is deliberately low to avoid flaking on
-# a slow emulator while still catching a blank render.
-if [ "$TEXT_NODES" -lt 3 ]; then
-  echo "--- what was on screen ---"
-  grep -oE 'text="[^"]*"' "$UI_XML" | sed 's/^/  /' | head -20
-  fail "only $TEXT_NODES text elements rendered -- the app is showing a blank or splash screen, not a usable one."
+# HARD failure, deliberately. This was informational on the first run, which is
+# precisely why a broken app passed: without requiring a KNOWN screen, "reached
+# a real screen" degrades into "rendered some text", and a stack trace is text.
+#
+# A fresh install is unauthenticated, so app/index.tsx redirects to
+# (auth)/login. If the first screen is ever changed on purpose, update these
+# markers -- do not delete the check.
+if ! grep -qiE 'text="[^"]*(password|login|mag-login)[^"]*"' "$UI_XML"; then
+  echo "--- what was actually on screen ---"
+  grep -oE 'text="[^"]*"' "$UI_XML" | sed 's/^/  /' | head -25
+  fail "the login screen did not render. Expected a fresh install to land on (auth)/login via app/index.tsx. If the first screen changed deliberately, update the markers in this script."
 fi
 
-echo "ok: $TEXT_NODES text elements rendered"
-
-# Informational, not a hard failure. A fresh install is unauthenticated and
-# should land on the login screen, but making this fatal would break CI for any
-# legitimate change to the first screen. If the first screen is intentionally
-# changed, update this marker rather than deleting the check.
-echo ""
-echo "--- Informational: expected first screen"
-if grep -qiE 'text="[^"]*(password|login|mag-login)[^"]*"' "$UI_XML"; then
-  echo "ok: login screen markers present (expected for a fresh install)"
-else
-  echo "note: no login markers found. Visible text was:"
-  grep -oE 'text="[^"]+"' "$UI_XML" | sed 's/^/  /' | head -15
-  echo "note: not failing on this -- but confirm this is the screen you expect."
-fi
+echo "ok: login screen rendered ($TEXT_NODES text elements)"
 
 echo ""
-echo "APK BOOT TEST PASSED -- the app installs, launches, and reaches a real screen."
+echo "APK BOOT TEST PASSED -- the app installs, launches, and reaches the login screen."
 exit 0
