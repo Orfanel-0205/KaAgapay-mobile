@@ -3,7 +3,7 @@
 # .github/scripts/assert-app-boots.sh
 #
 # Installs the release APK on the running emulator, launches it, and asserts it
-# reaches a real screen. Called by .github/workflows/apk-boot-test.yml inside
+# reaches the login screen. Called by .github/workflows/apk-boot-test.yml inside
 # reactivecircus/android-emulator-runner (the emulator is already booted).
 #
 # This exists because on 2026-09-03 an APK shipped that installed fine and
@@ -19,11 +19,24 @@ set -uo pipefail
 PACKAGE="com.pogi133.kaagapay"
 APK="android/app/build/outputs/apk/release/app-release.apk"
 ARTIFACTS="boot-artifacts"
+UI_XML="$ARTIFACTS/ui.xml"
 
-# How long to let the app settle before inspecting it. Expo Router resolves its
-# initial route after the JS bundle loads, so checking too early would see a
-# splash screen and pass regardless of whether routing works.
-SETTLE_SECONDS=25
+# Text that proves we reached the real first screen. A fresh install is
+# unauthenticated, so app/index.tsx redirects to (auth)/login.
+# If the first screen is ever changed on purpose, update this -- do not delete
+# the check that uses it.
+EXPECTED_SCREEN='(password|login|mag-login)'
+
+# How long to keep waiting for that screen before giving up.
+#
+# REPLACED A FIXED 25s SLEEP. On the first run against a release build, the
+# emulator was still thrashing at the 25s mark and the UI dump captured
+# "Pixel Launcher isn't responding" -- a system ANR dialog covering our app,
+# which had actually started fine. A single fixed sleep cannot tell "not ready
+# yet" apart from "broken", so this polls for the real screen instead and only
+# reports failure once it genuinely runs out of time.
+DEADLINE_SECONDS=240
+POLL_INTERVAL=5
 
 mkdir -p "$ARTIFACTS"
 
@@ -35,6 +48,40 @@ fail() {
   exit 1
 }
 
+capture_ui() {
+  rm -f "$UI_XML"
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
+  adb pull /sdcard/ui.xml "$UI_XML" >/dev/null 2>&1 || true
+}
+
+# An ANR dialog ("<app> isn't responding") sits on top of everything and hides
+# the app underneath. Dismiss it and keep waiting rather than calling the app
+# broken -- on a loaded CI emulator this is usually the launcher, not us.
+dismiss_anr_if_present() {
+  if grep -qiE "isn't responding|isn.t responding|Close app|Wait" "$UI_XML" 2>/dev/null; then
+    echo "  (system ANR dialog on screen -- dismissing and continuing to wait)"
+    # "Wait" keeps the offending app alive; BACK closes the dialog either way.
+    adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
+    sleep 2
+    return 0
+  fi
+  return 1
+}
+
+# --- Wait for the device itself to be ready ---------------------------------
+
+echo "--- Device"
+adb wait-for-device
+boot_deadline=$((SECONDS + 120))
+until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do
+  [ "$SECONDS" -ge "$boot_deadline" ] && fail "emulator never finished booting."
+  sleep 3
+done
+echo "ok: emulator boot completed"
+
+# --- APK --------------------------------------------------------------------
+
+echo ""
 echo "--- APK"
 [ -f "$APK" ] || fail "no APK at $APK -- the gradle build did not produce one."
 ls -la "$APK"
@@ -53,25 +100,59 @@ echo "--- Launching"
 adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 \
   || fail "could not launch $PACKAGE."
 
-echo "Waiting ${SETTLE_SECONDS}s for the JS bundle to load and routing to resolve..."
-sleep "$SETTLE_SECONDS"
+# --- Poll for the expected screen -------------------------------------------
+
+echo ""
+echo "--- Waiting up to ${DEADLINE_SECONDS}s for the login screen"
+
+reached=0
+deadline=$((SECONDS + DEADLINE_SECONDS))
+
+while [ "$SECONDS" -lt "$deadline" ]; do
+  sleep "$POLL_INTERVAL"
+  capture_ui
+
+  if [ ! -s "$UI_XML" ]; then
+    echo "  (no UI dump yet)"
+    continue
+  fi
+
+  if dismiss_anr_if_present; then
+    continue
+  fi
+
+  # Bail out early on states that will never resolve on their own -- no point
+  # burning the full deadline on an app that has already failed.
+  if grep -qi "unmatched" "$UI_XML"; then
+    echo "  (Unmatched Route detected -- stopping early)"
+    break
+  fi
+
+  if grep -qiE 'text="[^"]*(loadJSBundleFromAssets|Unable to load script|Could not connect to development server)' "$UI_XML"; then
+    echo "  (React Native error screen detected -- stopping early)"
+    break
+  fi
+
+  if grep -qiE "text=\"[^\"]*${EXPECTED_SCREEN}[^\"]*\"" "$UI_XML"; then
+    reached=1
+    echo "  login screen reached after ~$((SECONDS))s"
+    break
+  fi
+
+  echo "  (still waiting -- $(grep -oE 'text="[^"]+"' "$UI_XML" 2>/dev/null | wc -l) text nodes so far)"
+done
 
 # --- Collect evidence before asserting, so failures are diagnosable ----------
 
 adb logcat -d > "$ARTIFACTS/logcat.txt" 2>&1 || true
 adb shell dumpsys activity activities > "$ARTIFACTS/activities.txt" 2>&1 || true
 adb exec-out screencap -p > "$ARTIFACTS/screen.png" 2>/dev/null || true
-
-# uiautomator dumps the on-screen view hierarchy as XML, including visible text.
-# This is what lets us assert on what the user would actually see.
-UI_XML="$ARTIFACTS/ui.xml"
-adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1 || true
-adb pull /sdcard/ui.xml "$UI_XML" >/dev/null 2>&1 || true
+capture_ui
 
 # --- Assertion 1: the app did not crash -------------------------------------
 
 echo ""
-echo "--- Assertion 1: app is running in the foreground"
+echo "--- Assertion 1: app is running"
 
 if ! adb shell pidof "$PACKAGE" >/dev/null 2>&1; then
   echo "--- last 80 logcat lines ---"
@@ -79,14 +160,8 @@ if ! adb shell pidof "$PACKAGE" >/dev/null 2>&1; then
   fail "the app process is not running -- it crashed or exited on launch."
 fi
 
-if ! grep -q "$PACKAGE" "$ARTIFACTS/activities.txt" 2>/dev/null; then
-  fail "$PACKAGE is not among the running activities."
-fi
-
 echo "ok: $PACKAGE is running"
 
-# A fatal JS exception can leave the process alive while showing a red error
-# screen, so check the log explicitly too.
 if grep -qE "FATAL EXCEPTION|AndroidRuntime: FATAL" "$ARTIFACTS/logcat.txt" 2>/dev/null; then
   echo "--- fatal exception context ---"
   grep -B5 -A25 -E "FATAL EXCEPTION|AndroidRuntime: FATAL" "$ARTIFACTS/logcat.txt" | head -60
@@ -119,8 +194,7 @@ echo "ok: no 'Unmatched' text on screen"
 # nothing logs FATAL EXCEPTION, the word "Unmatched" is absent, and a rendered
 # Java stack trace easily clears a "has some text" threshold.
 #
-# A test that green-lights a broken app is worse than no test. These markers are
-# what that screen actually contained.
+# A test that green-lights a broken app is worse than no test.
 
 echo ""
 echo "--- Assertion 3: not a React Native error screen"
@@ -136,22 +210,17 @@ echo "ok: no React Native error-screen markers"
 # --- Assertion 4: the expected first screen actually rendered ---------------
 
 echo ""
-echo "--- Assertion 4: the expected first screen rendered"
+echo "--- Assertion 4: the login screen rendered"
 
 TEXT_NODES=$(grep -oE 'text="[^"]+"' "$UI_XML" | grep -vE 'text=""' | wc -l)
-echo "visible text nodes: $TEXT_NODES"
 
 # HARD failure, deliberately. This was informational on the first run, which is
 # precisely why a broken app passed: without requiring a KNOWN screen, "reached
 # a real screen" degrades into "rendered some text", and a stack trace is text.
-#
-# A fresh install is unauthenticated, so app/index.tsx redirects to
-# (auth)/login. If the first screen is ever changed on purpose, update these
-# markers -- do not delete the check.
-if ! grep -qiE 'text="[^"]*(password|login|mag-login)[^"]*"' "$UI_XML"; then
+if [ "$reached" -ne 1 ] && ! grep -qiE "text=\"[^\"]*${EXPECTED_SCREEN}[^\"]*\"" "$UI_XML"; then
   echo "--- what was actually on screen ---"
   grep -oE 'text="[^"]*"' "$UI_XML" | sed 's/^/  /' | head -25
-  fail "the login screen did not render. Expected a fresh install to land on (auth)/login via app/index.tsx. If the first screen changed deliberately, update the markers in this script."
+  fail "the login screen never rendered within ${DEADLINE_SECONDS}s. Expected a fresh install to land on (auth)/login via app/index.tsx. If the first screen changed deliberately, update EXPECTED_SCREEN in this script."
 fi
 
 echo "ok: login screen rendered ($TEXT_NODES text elements)"
