@@ -1,0 +1,107 @@
+# .github/workflows/apk-boot-test.yml -- Ka-Agapay mobile (Expo)
+#
+# Builds a real debug APK, installs it on a real Android emulator, launches it,
+# and asserts it reaches an actual screen.
+#
+# WHY THIS EXISTS
+# ---------------
+# On 2026-09-03 a preview APK shipped that could not launch at all -- every cold
+# start landed on Expo Router's "Unmatched Route" screen with an empty path.
+# Every other signal was green: tsc passed, Metro bundled, EAS reported the
+# build FINISHED, and the APK installed without error. The only thing that
+# detected it was a person tapping the icon.
+#
+# No amount of static checking closes that gap. A bundle can be well-formed,
+# correctly signed, and still fail to route on boot. The only honest test of
+# "does the app open" is opening it.
+#
+# This is deliberately NOT on every push -- it takes ~20-30 minutes. It runs on
+# pull requests to master (i.e. before anything ships) and on demand.
+#
+# WHAT IT ASSERTS
+#   1. the app process is the foreground activity after launch (it did not crash)
+#   2. the visible UI does NOT contain "Unmatched" (the 2026-09-03 failure)
+#   3. the visible UI has real content, not a blank or error-only screen
+#
+# It builds a DEBUG apk on purpose: a boot test needs no release signing keys,
+# so this workflow requires no secrets at all.
+
+name: APK boot test
+
+on:
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+concurrency:
+  group: apk-boot-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  boot:
+    name: Build APK and verify it opens
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      # android/ is gitignored (it is a generated prebuild artifact), so CI has
+      # to regenerate it. --clean guarantees we are not reusing anything stale,
+      # which is the whole point of this job.
+      #
+      # EXPO_BASE_URL is blanked to match how EAS invokes native builds. If a
+      # base path leaks in here, the resulting APK reproduces the original bug
+      # and the assertions below will catch it.
+      - name: Prebuild native project
+        env:
+          EXPO_BASE_URL: ''
+        run: npx expo prebuild --platform android --clean
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      # Emulator hardware acceleration; without this the emulator is too slow
+      # to be usable in CI.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install, launch, and verify the app opens
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: bash .github/scripts/assert-app-boots.sh
+
+      - name: Upload boot diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-diagnostics-${{ github.run_id }}
+          path: |
+            boot-artifacts/
+          retention-days: 14
+          if-no-files-found: ignore

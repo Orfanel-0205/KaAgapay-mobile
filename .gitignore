@@ -44,3 +44,9 @@ yarn-error.*
 .env
 google-services.json
 fcm-service-account.json
+
+# Smoke test output (scripts/smoke-bundle.mjs)
+.smoke/
+
+# Boot test diagnostics (.github/scripts/assert-app-boots.sh)
+boot-artifacts/

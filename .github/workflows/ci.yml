@@ -1,0 +1,82 @@
+# .github/workflows/ci.yml -- Ka-Agapay mobile (Expo)
+#
+# The fast gate. Runs on every push and pull request; finishes in a few minutes.
+#
+# WHY THIS EXISTS
+# ---------------
+# This repo had no CI at all until 2026-09-05. On 2026-09-03 it shipped a
+# preview APK that could not launch -- every cold start hit Expo Router's
+# "Unmatched Route" screen. tsc passed, the bundle built, EAS reported success,
+# and the APK installed cleanly. A human tapping the icon was the only thing
+# that caught it.
+#
+# That is the pattern this pipeline is built against: the defects in this
+# project have been invisible rather than broken, with every automated signal
+# reporting success. So these steps deliberately assert on OUTPUT -- what
+# actually ended up in the bundle -- not just on whether commands exited 0.
+#
+# The heavier "does the installed app really reach a screen" check lives in
+# apk-boot-test.yml, which runs on PRs to master rather than on every push.
+
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same branch; a stale result helps nobody.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck and bundle smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` (not `npm install`) so the lockfile is authoritative and a
+      # drifted lockfile fails here rather than producing a different tree.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # The real gate. Asserts that:
+      #   - a native build resolves with NO experiments.baseUrl
+      #     (the exact 2026-09-03 cold-start cause)
+      #   - a web export still opts in via EXPO_BASE_URL, so a future
+      #     "cleanup" of app.config.js fails loudly here instead of silently
+      #     breaking the /app nginx deploy
+      #   - the compiled Android bundle has no base path baked into its route
+      #     handling, no rebased asset paths, and still contains the routes
+      #     users actually navigate to
+      #
+      # EXPO_BASE_URL is explicitly blanked to match how EAS invokes native
+      # builds. If it ever leaks into the native build environment, this fails.
+      - name: Bundle smoke test
+        env:
+          EXPO_BASE_URL: ''
+        run: node scripts/smoke-bundle.mjs
+
+      # Kept on failure so a maintainer can inspect what was actually produced
+      # rather than re-running the build locally to guess.
+      - name: Upload bundle on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-bundle-${{ github.run_id }}
+          path: .smoke/
+          retention-days: 7
+          if-no-files-found: ignore

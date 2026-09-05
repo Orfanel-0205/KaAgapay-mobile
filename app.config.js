@@ -59,8 +59,17 @@ module.exports = ({ config }) => {
     // Native builds, `expo start`, Expo Go: no baseUrl, matching the
     // pre-incident config. This is the default for every path that does not
     // explicitly opt in.
-    const { experiments, ...rest } = base;
-    return rest;
+    //
+    // Strip ONLY baseUrl, never the whole `experiments` block. An earlier
+    // version of this file dropped every experiment flag here, which would
+    // have silently disabled any future native-safe experiment (typedRoutes,
+    // reactCompiler, ...) the moment someone added one -- the same kind of
+    // invisible failure this file exists to prevent.
+    const { baseUrl: _dropped, ...keptExperiments } = base.experiments ?? {};
+
+    return Object.keys(keptExperiments).length > 0
+      ? { ...base, experiments: keptExperiments }
+      : (({ experiments: _removed, ...rest }) => rest)(base);
   }
 
   // Explicit web export only.
