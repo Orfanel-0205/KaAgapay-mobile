@@ -35,8 +35,13 @@ EXPECTED_SCREEN='(password|login|mag-login)'
 # which had actually started fine. A single fixed sleep cannot tell "not ready
 # yet" apart from "broken", so this polls for the real screen instead and only
 # reports failure once it genuinely runs out of time.
-DEADLINE_SECONDS=240
-POLL_INTERVAL=5
+DEADLINE_SECONDS=300
+POLL_INTERVAL=10
+
+# Let the app get through startup before we start sampling. Each uiautomator
+# dump costs real CPU on an already-loaded emulator, so polling early and often
+# was making the very contention it was trying to observe.
+INITIAL_GRACE_SECONDS=30
 
 mkdir -p "$ARTIFACTS"
 
@@ -55,17 +60,50 @@ capture_ui() {
 }
 
 # An ANR dialog ("<app> isn't responding") sits on top of everything and hides
-# the app underneath. Dismiss it and keep waiting rather than calling the app
-# broken -- on a loaded CI emulator this is usually the launcher, not us.
+# the app underneath. On a loaded CI emulator this is usually the LAUNCHER, not
+# us -- our app can be running perfectly behind it.
+#
+# BACK DOES NOT DISMISS THESE. Android deliberately ignores the back key on ANR
+# dialogs, which an earlier version of this script did not account for: it
+# "dismissed" the same dialog 26 times in a row and then burned the whole
+# deadline. The dialog has to be tapped.
 dismiss_anr_if_present() {
-  if grep -qiE "isn't responding|isn.t responding|Close app|Wait" "$UI_XML" 2>/dev/null; then
-    echo "  (system ANR dialog on screen -- dismissing and continuing to wait)"
-    # "Wait" keeps the offending app alive; BACK closes the dialog either way.
-    adb shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
-    sleep 2
-    return 0
+  grep -qiE "isn.t responding" "$UI_XML" 2>/dev/null || return 1
+
+  echo "  (system ANR dialog on screen -- tapping 'Wait')"
+
+  # Pull the bounds of the "Wait" button out of the dump and tap its centre.
+  # bounds look like: bounds="[420,1200][660,1320]"
+  local coords
+  coords=$(python3 - "$UI_XML" <<'PYEOF' 2>/dev/null || true
+import re, sys
+xml = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+# node whose text is exactly Wait, capture its bounds attribute
+for m in re.finditer(r'<node[^>]*>', xml):
+    tag = m.group(0)
+    if re.search(r'text="Wait"', tag):
+        b = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', tag)
+        if b:
+            x1, y1, x2, y2 = map(int, b.groups())
+            print((x1 + x2) // 2, (y1 + y2) // 2)
+            break
+PYEOF
+)
+
+  if [ -n "$coords" ]; then
+    # shellcheck disable=SC2086
+    adb shell input tap $coords >/dev/null 2>&1 || true
+  else
+    # No parsable button; ESCAPE dismisses some system dialogs where BACK will not.
+    adb shell input keyevent KEYCODE_ESCAPE >/dev/null 2>&1 || true
   fi
-  return 1
+
+  sleep 2
+
+  # Whatever was ANRing, make sure OUR app is the thing in front again.
+  adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+  sleep 3
+  return 0
 }
 
 # --- Wait for the device itself to be ready ---------------------------------
@@ -104,6 +142,8 @@ adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 \
 
 echo ""
 echo "--- Waiting up to ${DEADLINE_SECONDS}s for the login screen"
+echo "  (${INITIAL_GRACE_SECONDS}s grace first, so sampling does not compete with startup)"
+sleep "$INITIAL_GRACE_SECONDS"
 
 reached=0
 deadline=$((SECONDS + DEADLINE_SECONDS))

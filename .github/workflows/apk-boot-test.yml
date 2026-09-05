@@ -96,11 +96,23 @@ jobs:
       - name: Install, launch, and verify the app opens
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          # Tuned after two runs where the SYSTEM LAUNCHER hit an ANR and sat on
+          # top of our app for the whole deadline. The app itself was running
+          # fine underneath; the emulator was simply CPU-starved.
+          #
+          # pixel_6 was dropped: its high resolution costs real rendering work
+          # on a software GPU for no benefit to a text-content assertion. API 34
+          # dropped to 33 for a lighter system image, and RAM raised so the
+          # release build (a 149 MB APK) has room to start.
+          api-level: 33
           target: google_apis
           arch: x86_64
-          profile: pixel_6
+          ram-size: 4096M
+          cores: 3
           disable-animations: true
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio
+            -no-boot-anim -camera-back none -camera-front none
           script: bash .github/scripts/assert-app-boots.sh
 
       - name: Upload boot diagnostics on failure
