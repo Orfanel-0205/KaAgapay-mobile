@@ -19,12 +19,31 @@
 # pull requests to master (i.e. before anything ships) and on demand.
 #
 # WHAT IT ASSERTS
-#   1. the app process is the foreground activity after launch (it did not crash)
+#   0. GATE: the captured UI actually belongs to our package
+#   1. the app process is running after launch (it did not crash)
 #   2. the visible UI does NOT contain "Unmatched" (the 2026-09-03 failure)
-#   3. the visible UI has real content, not a blank or error-only screen
+#   3. the visible UI is not React Native's red-box error screen
+#   4. the login screen actually rendered
 #
-# It builds a DEBUG apk on purpose: a boot test needs no release signing keys,
-# so this workflow requires no secrets at all.
+# Assertion 0 is a gate rather than a check, and it is the one that makes the
+# rest trustworthy. `uiautomator dump` captures only the FOCUSED window, so when
+# a system dialog is in front, the dump describes that dialog and the app is
+# absent from it entirely. Run 4 failed exactly this way: the app booted in 2.7s
+# and Android 13's POST_NOTIFICATIONS dialog then held focus for the whole
+# deadline. Assertions 2 and 3 "passed" against a permission dialog -- proving
+# nothing, because absence of bad text in the wrong window is not evidence.
+# The script now pre-grants that permission, taps its way past system dialogs,
+# and refuses to draw any conclusion from a dump that is not our app.
+#
+# It builds a RELEASE apk. That is not for realism alone -- a DEBUG apk does not
+# embed the JS bundle (there is no bundleInDebug in the react {} block), so it
+# expects a Metro dev server that does not exist in CI and boots straight into
+# React Native's red-box error screen. Release builds embed the bundle via
+# `export:embed`, the same path EAS uses for the APKs that actually ship.
+#
+# This still needs no secrets: Expo's generated template sets
+# `release { signingConfig signingConfigs.debug }`, so a release build signs
+# itself with the debug keystore.
 
 name: APK boot test
 
@@ -73,9 +92,9 @@ jobs:
           EXPO_BASE_URL: ''
         run: npx expo prebuild --platform android --clean
 
-      - name: Build debug APK
+      - name: Build release APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       # Emulator hardware acceleration; without this the emulator is too slow
       # to be usable in CI.
@@ -89,15 +108,38 @@ jobs:
       - name: Install, launch, and verify the app opens
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          # Tuned after two runs where the SYSTEM LAUNCHER hit an ANR and sat on
+          # top of our app for the whole deadline. The app itself was running
+          # fine underneath; the emulator was simply CPU-starved.
+          #
+          # pixel_6 was dropped: its high resolution costs real rendering work
+          # on a software GPU for no benefit to a text-content assertion. API 34
+          # dropped to 33 for a lighter system image, and RAM raised so the
+          # release build (a 149 MB APK) has room to start.
+          api-level: 33
           target: google_apis
           arch: x86_64
-          profile: pixel_6
+          ram-size: 4096M
+          cores: 3
           disable-animations: true
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio
+            -no-boot-anim -camera-back none -camera-front none
           script: bash .github/scripts/assert-app-boots.sh
 
-      - name: Upload boot diagnostics on failure
-        if: failure()
+      # Uploaded on SUCCESS as well as failure, deliberately.
+      #
+      # This test has now been wrong in both directions -- run 1 passed against
+      # a red-box error screen, run 4 failed against an app that had booted in
+      # 2.7s. A green run is therefore not self-evidently correct, and until
+      # this one has a track record, "it passed" needs to be checkable rather
+      # than taken on trust. The screenshot and ui.xml from a passing run are
+      # what make that possible: they show WHAT was on screen when it passed.
+      #
+      # The script already writes these before asserting, so this costs one
+      # upload and no extra runtime.
+      - name: Upload boot diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: boot-diagnostics-${{ github.run_id }}
