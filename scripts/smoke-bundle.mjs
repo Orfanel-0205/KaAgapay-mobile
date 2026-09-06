@@ -47,6 +47,24 @@ const MIN_BUNDLE_BYTES = 1_000_000;
  *  screen the "Book" quick action opens -- the one users reported as broken. */
 const REQUIRED_ROUTE_MARKERS = ['appointments/create', 'telemedicine', 'queue'];
 
+/** Android notification channel ids the backend sends on.
+ *
+ *  Android 8+ DISCARDS a notification addressed to a channel the app has not
+ *  created, and does so silently: no error reaches the app, the backend logs
+ *  "accepted by Expo", and the Expo receipt still reads "delivered to FCM".
+ *  Before 2026-09-06 the app created only "queue-alerts", so notifications on
+ *  the other three vanished with every upstream signal green.
+ *
+ *  These must match the `channelId:` arguments passed to
+ *  ExpoPushService::sendToUser in the backend. If the server gains a channel
+ *  and this list does not, those notifications disappear silently again. */
+const REQUIRED_NOTIFICATION_CHANNELS = [
+  'queue-alerts',
+  'default',
+  'telemedicine-calls',
+  'follow-up-reminders',
+];
+
 const failures = [];
 const notes = [];
 
@@ -214,6 +232,20 @@ if (bundlePath && existsSync(bundlePath)) {
     fail('asset httpServerLocation entries are prefixed "/app/" -- baseUrl leaked into assets.');
   } else {
     pass('asset paths not rebased');
+  }
+
+  const missingChannels = REQUIRED_NOTIFICATION_CHANNELS.filter(
+    (c) => !source.includes(`"${c}"`) && !source.includes(`'${c}'`)
+  );
+  if (missingChannels.length > 0) {
+    fail(
+      `notification channel ids missing from the bundle: ${missingChannels.join(', ')}. ` +
+        'Android silently discards notifications sent to a channel the app never ' +
+        'created, so this failure is invisible at runtime -- the backend, Expo and ' +
+        'the FCM receipt all still report success.'
+    );
+  } else {
+    pass(`all ${REQUIRED_NOTIFICATION_CHANNELS.length} notification channels present`);
   }
 
   const missingRoutes = REQUIRED_ROUTE_MARKERS.filter((r) => !source.includes(r));

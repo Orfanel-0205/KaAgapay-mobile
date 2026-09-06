@@ -47,21 +47,62 @@ function routeFromNotificationData(data: Record<string, any>) {
   return null;
 }
 
+/**
+ * Every channel id the backend can send on.
+ *
+ * THIS LIST MUST STAY IN SYNC WITH THE SERVER. On Android 8+ a notification
+ * addressed to a channel that does not exist on the device is discarded by the
+ * system -- silently. No error reaches the app, nothing is logged, and every
+ * upstream signal still reports success: the backend logs "accepted by Expo",
+ * Expo returns an ok ticket, and the delivery receipt reads "delivered to
+ * FCM". The notification simply never appears.
+ *
+ * That is exactly what was happening. This app created only "queue-alerts",
+ * while App\Services\Notification\NotificationService sends on four ids:
+ *
+ *   queue-alerts        queue position called        (worked -- channel existed)
+ *   default             general notifications        (silently dropped)
+ *   telemedicine-calls  incoming consultation call   (silently dropped)
+ *   follow-up-reminders follow-up due                (silently dropped)
+ *
+ * Verified against the server on 2026-09-06 by grepping every `channelId:`
+ * argument passed to ExpoPushService::sendToUser. If a new channel id is added
+ * there, add it here in the same change or those notifications vanish.
+ */
+const ANDROID_CHANNELS: Array<{ id: string; name: string }> = [
+  { id: "queue-alerts", name: "Queue Alerts" },
+  { id: "default", name: "General Notifications" },
+  { id: "telemedicine-calls", name: "Telemedicine Calls" },
+  { id: "follow-up-reminders", name: "Follow-up Reminders" },
+];
+
+async function configureAndroidChannels() {
+  if (Platform.OS !== "android") {
+    return;
+  }
+
+  for (const channel of ANDROID_CHANNELS) {
+    await Notifications.setNotificationChannelAsync(channel.id, {
+      name: channel.name,
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#0F766E",
+      sound: "default",
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+  }
+
+  console.log(
+    "[Ka-Agapay] Android notification channels configured:",
+    ANDROID_CHANNELS.map((channel) => channel.id).join(", ")
+  );
+}
+
 async function registerPushTokenOnce() {
   try {
     console.log("[Ka-Agapay] Push setup started");
 
-    if (Platform.OS === "android") {
-      await Notifications.setNotificationChannelAsync("queue-alerts", {
-        name: "Queue Alerts",
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#0F766E",
-        sound: "default",
-        lockscreenVisibility:
-          Notifications.AndroidNotificationVisibility.PUBLIC,
-      });
-    }
+    await configureAndroidChannels();
 
     const currentPermission = await Notifications.getPermissionsAsync();
     let finalStatus = currentPermission.status;
