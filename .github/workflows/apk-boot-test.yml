@@ -19,9 +19,21 @@
 # pull requests to master (i.e. before anything ships) and on demand.
 #
 # WHAT IT ASSERTS
-#   1. the app process is the foreground activity after launch (it did not crash)
+#   0. GATE: the captured UI actually belongs to our package
+#   1. the app process is running after launch (it did not crash)
 #   2. the visible UI does NOT contain "Unmatched" (the 2026-09-03 failure)
-#   3. the visible UI has real content, not a blank or error-only screen
+#   3. the visible UI is not React Native's red-box error screen
+#   4. the login screen actually rendered
+#
+# Assertion 0 is a gate rather than a check, and it is the one that makes the
+# rest trustworthy. `uiautomator dump` captures only the FOCUSED window, so when
+# a system dialog is in front, the dump describes that dialog and the app is
+# absent from it entirely. Run 4 failed exactly this way: the app booted in 2.7s
+# and Android 13's POST_NOTIFICATIONS dialog then held focus for the whole
+# deadline. Assertions 2 and 3 "passed" against a permission dialog -- proving
+# nothing, because absence of bad text in the wrong window is not evidence.
+# The script now pre-grants that permission, taps its way past system dialogs,
+# and refuses to draw any conclusion from a dump that is not our app.
 #
 # It builds a RELEASE apk. That is not for realism alone -- a DEBUG apk does not
 # embed the JS bundle (there is no bundleInDebug in the react {} block), so it

@@ -59,29 +59,54 @@ capture_ui() {
   adb pull /sdcard/ui.xml "$UI_XML" >/dev/null 2>&1 || true
 }
 
-# An ANR dialog ("<app> isn't responding") sits on top of everything and hides
-# the app underneath. On a loaded CI emulator this is usually the LAUNCHER, not
-# us -- our app can be running perfectly behind it.
+# Does the current dump actually show OUR app?
 #
-# BACK DOES NOT DISMISS THESE. Android deliberately ignores the back key on ANR
-# dialogs, which an earlier version of this script did not account for: it
-# "dismissed" the same dialog 26 times in a row and then burned the whole
-# deadline. The dialog has to be tapped.
-dismiss_anr_if_present() {
-  grep -qiE "isn.t responding" "$UI_XML" 2>/dev/null || return 1
+# THIS IS THE MOST IMPORTANT CHECK IN THE SCRIPT, and it was missing until run
+# 4. `uiautomator dump` captures only the FOCUSED window. When a system window
+# has focus, the dump contains that window and nothing else -- our app is not in
+# it at all, however healthy it is.
+#
+# That makes every "bad text is absent" assertion below vacuous: run 4's dump
+# held three text nodes belonging to a permission dialog, so "no Unmatched" and
+# "no React Native error screen" both passed while proving nothing whatsoever
+# about the app. Absence of evidence in the wrong window is not evidence.
+dump_is_our_app() {
+  grep -q "package=\"$PACKAGE\"" "$UI_XML" 2>/dev/null
+}
 
-  echo "  (system ANR dialog on screen -- tapping 'Wait')"
+# A system window sitting on top of the app hides it completely. Two kinds show
+# up on a CI emulator, and both need a TAP -- BACK is deliberately ignored on
+# them, which an earlier version of this script did not account for: it
+# "dismissed" the same ANR dialog 26 times and then burned the whole deadline.
+#
+#   1. ANR ("<app> isn't responding") -- usually the LAUNCHER, not us.
+#   2. Runtime permission grants -- POST_NOTIFICATIONS on Android 13+.
+#      Pre-granted above, so this is a backstop for that and for any permission
+#      the app starts requesting at boot later (camera for OCR, media, ...).
+dismiss_blocking_dialog_if_present() {
+  local kind="" button=""
 
-  # Pull the bounds of the "Wait" button out of the dump and tap its centre.
+  if grep -qiE "isn.t responding" "$UI_XML" 2>/dev/null; then
+    kind="ANR"; button="Wait"
+  elif grep -q "permissioncontroller" "$UI_XML" 2>/dev/null; then
+    kind="permission"; button="permission_allow_button"
+  else
+    return 1
+  fi
+
+  echo "  (system $kind dialog has focus -- tapping '$button')"
+
+  # Tap the centre of the button, matched by resource-id or exact text.
   # bounds look like: bounds="[420,1200][660,1320]"
   local coords
-  coords=$(python3 - "$UI_XML" <<'PYEOF' 2>/dev/null || true
+  coords=$(python3 - "$UI_XML" "$button" <<'PYEOF' 2>/dev/null || true
 import re, sys
 xml = open(sys.argv[1], encoding='utf-8', errors='replace').read()
-# node whose text is exactly Wait, capture its bounds attribute
+want = sys.argv[2]
 for m in re.finditer(r'<node[^>]*>', xml):
     tag = m.group(0)
-    if re.search(r'text="Wait"', tag):
+    if re.search(r'resource-id="[^"]*%s"' % re.escape(want), tag) \
+       or re.search(r'text="%s"' % re.escape(want), tag):
         b = re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"', tag)
         if b:
             x1, y1, x2, y2 = map(int, b.groups())
@@ -100,7 +125,7 @@ PYEOF
 
   sleep 2
 
-  # Whatever was ANRing, make sure OUR app is the thing in front again.
+  # Whatever was in front, make sure OUR app is the thing in front again.
   adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
   sleep 3
   return 0
@@ -127,6 +152,22 @@ ls -la "$APK"
 echo ""
 echo "--- Installing"
 adb install -r "$APK" || fail "adb install failed."
+
+# Pre-grant POST_NOTIFICATIONS.
+#
+# The app calls its push setup during startup ("[Ka-Agapay] Push setup started"
+# in logcat), which on Android 13+ raises the system runtime-permission dialog.
+# That dialog takes focus, and `uiautomator dump` only captures the FOCUSED
+# window -- so the app becomes invisible to this script even though it started
+# perfectly. That is exactly how run 4 failed: the app was fully rendered in
+# 2.7s and the test then spent five minutes reading a permission dialog.
+#
+# Granting up front removes the race entirely rather than trying to win it.
+# Tolerated if it fails: older API levels do not define the permission, and the
+# dialog handler below is the backstop.
+adb shell pm grant "$PACKAGE" android.permission.POST_NOTIFICATIONS >/dev/null 2>&1 \
+  && echo "ok: POST_NOTIFICATIONS pre-granted" \
+  || echo "note: could not pre-grant POST_NOTIFICATIONS (handler below will cover it)"
 
 # Clear any prior logcat so what we capture belongs to this launch only.
 adb logcat -c || true
@@ -157,7 +198,16 @@ while [ "$SECONDS" -lt "$deadline" ]; do
     continue
   fi
 
-  if dismiss_anr_if_present; then
+  if dismiss_blocking_dialog_if_present; then
+    continue
+  fi
+
+  # If some other system window owns focus, the dump is not about our app, so
+  # none of the checks below mean anything. Bring the app forward and re-sample
+  # rather than drawing conclusions from a window we did not launch.
+  if ! dump_is_our_app; then
+    echo "  (a system window has focus -- app not visible to uiautomator; refocusing)"
+    adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
     continue
   fi
 
@@ -210,12 +260,42 @@ fi
 
 echo "ok: no fatal exception in logcat"
 
+# --- Gate: the dump must actually show our app ------------------------------
+#
+# Everything below reads $UI_XML. If a system window owns focus, that file
+# describes the system window and the app is absent from it, making the
+# remaining "bad text is absent" checks vacuously true. Run 4 passed assertions
+# 2 and 3 against a permission dialog while learning nothing about the app.
+# Gate them behind a positive check that we are looking at the right thing.
+
+echo ""
+echo "--- Gate: the captured UI belongs to $PACKAGE"
+
+[ -s "$UI_XML" ] || fail "could not capture the UI hierarchy -- cannot tell what is on screen."
+
+if ! dump_is_our_app; then
+  # One last attempt: clear whatever is in front, refocus, re-sample.
+  dismiss_blocking_dialog_if_present || true
+  adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+  sleep 5
+  capture_ui
+fi
+
+if ! dump_is_our_app; then
+  echo "--- window that had focus instead ---"
+  grep -oE 'package="[^"]*"' "$UI_XML" | sort -u | sed 's/^/  /'
+  grep -oE 'text="[^"]*"' "$UI_XML" | sed 's/^/  /' | head -10
+  fail "a system window kept focus for the whole deadline, so the app was never
+visible to uiautomator. This is NOT proof the app is broken -- check
+logcat.txt and screen.png in the artifact before assuming it is."
+fi
+
+echo "ok: the dump shows $PACKAGE"
+
 # --- Assertion 2: not the Unmatched Route screen ----------------------------
 
 echo ""
 echo "--- Assertion 2: did not land on Expo Router's Unmatched Route screen"
-
-[ -s "$UI_XML" ] || fail "could not capture the UI hierarchy -- cannot tell what is on screen."
 
 if grep -qi "unmatched" "$UI_XML"; then
   echo "--- visible text on screen ---"
