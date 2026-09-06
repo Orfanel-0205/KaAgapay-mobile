@@ -127,8 +127,19 @@ jobs:
             -no-boot-anim -camera-back none -camera-front none
           script: bash .github/scripts/assert-app-boots.sh
 
-      - name: Upload boot diagnostics on failure
-        if: failure()
+      # Uploaded on SUCCESS as well as failure, deliberately.
+      #
+      # This test has now been wrong in both directions -- run 1 passed against
+      # a red-box error screen, run 4 failed against an app that had booted in
+      # 2.7s. A green run is therefore not self-evidently correct, and until
+      # this one has a track record, "it passed" needs to be checkable rather
+      # than taken on trust. The screenshot and ui.xml from a passing run are
+      # what make that possible: they show WHAT was on screen when it passed.
+      #
+      # The script already writes these before asserting, so this costs one
+      # upload and no extra runtime.
+      - name: Upload boot diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: boot-diagnostics-${{ github.run_id }}
