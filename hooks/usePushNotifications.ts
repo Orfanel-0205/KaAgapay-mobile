@@ -123,6 +123,37 @@ async function registerPushTokenOnce() {
 
     console.log("[Ka-Agapay] Push projectId:", projectId);
 
+    /*
+     * Log the RAW FCM registration token, not just the Expo token that wraps it.
+     *
+     * On 2026-09-09 every freshly minted Expo token for this app came back from
+     * Expo's delivery receipt as DeviceNotRegistered ("The recipient device is
+     * not registered with FCM"), across three clean reinstalls. Everything
+     * upstream measured healthy: the Firebase Android app and API key are live
+     * (Firebase Installations issued a token for app id
+     * 1:632061548072:android:ffde68e65d0c867bed071d), the service account
+     * authenticates against FCM v1, and FCM rejects a bogus token with
+     * INVALID_ARGUMENT rather than an auth or permission error.
+     *
+     * The Expo push token is opaque, so it cannot be tested against FCM
+     * directly -- only Expo can resolve it. The raw FCM token can be, which is
+     * the difference between "Expo says the device is unregistered" and knowing
+     * what FCM itself says about this exact device. Without this line the
+     * question is unanswerable from outside the app.
+     *
+     * Wrapped in its own try/catch: this is diagnostic only and must never be
+     * the reason push registration fails.
+     */
+    try {
+      const devicePushToken = await Notifications.getDevicePushTokenAsync();
+      console.log(
+        "[Ka-Agapay] RAW FCM device token:",
+        devicePushToken?.data ?? "(none)"
+      );
+    } catch (error) {
+      console.warn("[Ka-Agapay] could not read raw FCM device token", error);
+    }
+
     const tokenResult = await Notifications.getExpoPushTokenAsync(
       projectId ? { projectId } : undefined
     );
