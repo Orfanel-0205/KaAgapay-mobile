@@ -6,7 +6,9 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "check:push-credentials": "node scripts/check-push-credentials.mjs",
+    "eas-build-pre-install": "node scripts/check-push-credentials.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
