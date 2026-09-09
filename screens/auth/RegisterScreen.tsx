@@ -40,6 +40,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 
+import TermsModal from "../../Components/TermsModal";
 import { useRegister } from "../../hooks/useAuth";
 import { useBarangays } from "../../hooks/useBarangays";
 import { usePasswordStrength, RULES } from "../../hooks/usePasswordStrength";
@@ -387,6 +388,13 @@ export default function RegisterScreen() {
     isReady: barangaysReady,
   } = useBarangays();
 
+  // ── Terms & Conditions ────────────────────────────────────────────────────
+  // The backend validates terms_accepted as ['required','accepted']; without it
+  // every resident registration is rejected with a 422. The checkbox is only
+  // tickable after the modal has actually been read to the end.
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+
   // ── Form state ────────────────────────────────────────────────────────────
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -514,6 +522,18 @@ export default function RegisterScreen() {
       return;
     }
 
+    if (!termsAccepted) {
+      Alert.alert(
+        "Terms not accepted",
+        "You must read and accept the Terms and Conditions to register.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Read Terms", onPress: () => setShowTerms(true) },
+        ]
+      );
+      return;
+    }
+
     const cleanBarangay = barangay.trim();
 
     if (__DEV__) {
@@ -543,6 +563,7 @@ export default function RegisterScreen() {
         barangay: cleanBarangay,
         birthday: birthdayISO,
         sex: sex || undefined,
+        terms_accepted: true,
       },
       {
         onSuccess: async () => {
@@ -878,12 +899,50 @@ export default function RegisterScreen() {
             </Text>
           )}
 
+          {/* Terms & Conditions acceptance */}
+          <View className="flex-row items-start mb-4">
+            <TouchableOpacity
+              onPress={() => {
+                // Ticking the box requires having opened the terms at least
+                // once; unticking is always allowed.
+                if (termsAccepted) {
+                  setTermsAccepted(false);
+                } else {
+                  setShowTerms(true);
+                }
+              }}
+              className="pr-3 pt-0.5"
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: termsAccepted }}
+              accessibilityLabel="Accept the Terms and Conditions"
+            >
+              <Ionicons
+                name={termsAccepted ? "checkbox" : "square-outline"}
+                size={22}
+                color={termsAccepted ? "#0D9488" : "#9CA3AF"}
+              />
+            </TouchableOpacity>
+
+            <Text className="flex-1 text-xs text-gray-600 leading-5">
+              I have read and accept the{" "}
+              <Text
+                className="text-teal-600 font-bold underline"
+                onPress={() => setShowTerms(true)}
+              >
+                Terms, Data Privacy & System Use
+              </Text>
+              .
+            </Text>
+          </View>
+
           {/* Submit */}
           <TouchableOpacity
             onPress={handleRegister}
-            disabled={isPending || !barangaysReady}
+            disabled={isPending || !barangaysReady || !termsAccepted}
             className={`rounded-xl py-4 items-center ${
-              isPending || !barangaysReady ? "bg-teal-300" : "bg-teal-600"
+              isPending || !barangaysReady || !termsAccepted
+                ? "bg-teal-300"
+                : "bg-teal-600"
             }`}
           >
             {isPending ? (
@@ -902,6 +961,12 @@ export default function RegisterScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        <TermsModal
+          visible={showTerms}
+          onClose={() => setShowTerms(false)}
+          onAcknowledge={() => setTermsAccepted(true)}
+        />
       </KeyboardAwareScrollView>
 
       {/* Barangay picker modal */}

@@ -26,6 +26,13 @@ export interface RegisterPayload {
   barangay: string;
   birthday?: string;
   sex?: string;
+
+  // Required by the backend. AuthController::register validates this as
+  // ['required','accepted'] and records users.terms_accepted_at; a payload
+  // without it is rejected with a 422 and no account is created. Typed as the
+  // literal true so an accidental `terms_accepted: false` fails to compile
+  // rather than failing at the server.
+  terms_accepted: true;
 }
 
 interface AuthApiResponse {
