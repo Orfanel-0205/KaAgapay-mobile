@@ -47,13 +47,38 @@
 // This file is a thin overlay: app.json remains the source of truth for every
 // other key. Do not add `experiments.baseUrl` back to app.json -- that is
 // exactly the regression this file exists to prevent.
-
+//
+// -----------------------------------------------------------------------------
+// SECOND INCIDENT (2026-09): app.json's android.googleServicesFile pointed at
+// "./google-services.json", but that file is gitignored as a credential and
+// was never uploaded anywhere EAS could reach it. A fresh clone or
+// `prebuild --clean` -- what every EAS build does -- silently produced an
+// android/ with neither the file nor the com.google.gms.google-services
+// plugin. Gradle had nothing to object to, so the build succeeded and shipped
+// an APK that could install, open, and request a push token, and could never
+// actually receive one. scripts/check-push-credentials.mjs (wired as
+// eas-build-pre-install) now fails that build loudly instead -- but the guard
+// only detects the missing file, it does not supply it.
+//
+// FIX: the real google-services.json is stored as an EAS file-type
+// environment variable (GOOGLE_SERVICES_JSON, scope: project, set for
+// development/preview/production) uploaded via
+//   eas env:set --name GOOGLE_SERVICES_JSON --value ./google-services.json --type file
+// On an EAS build, that variable resolves to an absolute local path to the
+// downloaded file; this file reads it at config-eval time and points
+// googleServicesFile there instead of the static app.json path. Locally
+// (`expo start`, `expo run:android`), the env var is unset, so this falls
+// back to app.json's own "./google-services.json" -- the same convention the
+// push-credentials guard already checks for.
 const appJson = require('./app.json');
 
 module.exports = ({ config }) => {
   const base = config ?? appJson.expo;
 
   const baseUrl = (process.env.EXPO_BASE_URL || '').trim();
+  const googleServicesFile = (process.env.GOOGLE_SERVICES_JSON || '').trim();
+
+  let result = base;
 
   if (!baseUrl) {
     // Native builds, `expo start`, Expo Go: no baseUrl, matching the
@@ -67,17 +92,29 @@ module.exports = ({ config }) => {
     // invisible failure this file exists to prevent.
     const { baseUrl: _dropped, ...keptExperiments } = base.experiments ?? {};
 
-    return Object.keys(keptExperiments).length > 0
+    result = Object.keys(keptExperiments).length > 0
       ? { ...base, experiments: keptExperiments }
       : (({ experiments: _removed, ...rest }) => rest)(base);
+  } else {
+    // Explicit web export only.
+    result = {
+      ...base,
+      experiments: {
+        ...base.experiments,
+        baseUrl,
+      },
+    };
   }
 
-  // Explicit web export only.
-  return {
-    ...base,
-    experiments: {
-      ...base.experiments,
-      baseUrl,
-    },
-  };
+  if (googleServicesFile) {
+    result = {
+      ...result,
+      android: {
+        ...result.android,
+        googleServicesFile,
+      },
+    };
+  }
+
+  return result;
 };
