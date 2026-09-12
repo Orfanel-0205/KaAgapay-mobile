@@ -19,7 +19,6 @@
     },
     "android": {
       "package": "com.pogi133.kaagapay",
-      "googleServicesFile": "./google-services.json",
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [

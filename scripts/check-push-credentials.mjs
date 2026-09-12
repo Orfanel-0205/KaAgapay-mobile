@@ -42,15 +42,18 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import googleServicesPath from './google-services-path.cjs';
 
 const ROOT = process.cwd();
 
-// Either location is acceptable: the repo root is where a human puts it, and
-// android/app/ is where prebuild copies it to.
-const CANDIDATES = [
-  'google-services.json',
-  path.join('android', 'app', 'google-services.json'),
-];
+// Where to look is decided by scripts/google-services-path.cjs, the same module
+// app.config.js uses, so this check and the build config cannot disagree. In
+// priority order: the path EAS gives the GOOGLE_SERVICES_JSON file variable on
+// its workers, then the project root (local builds), then android/app (an
+// already-generated native project). Until 2026-09-12 this script looked only
+// at the last two, so an EAS build from a fresh clone -- variable set
+// correctly, no local copy -- would have been stopped here.
+const CANDIDATES = googleServicesPath.googleServicesCandidates(ROOT);
 
 const problems = [];
 
@@ -60,15 +63,30 @@ function fail(msg) {
 
 // --- locate ------------------------------------------------------------------
 
-const found = CANDIDATES.filter((rel) => existsSync(path.join(ROOT, rel)));
+const envCandidate = CANDIDATES.find((c) => c.fromEnv);
 
-if (found.length === 0) {
+if (envCandidate && !existsSync(envCandidate.file)) {
+  // Set but pointing at nothing: an EAS misconfiguration. Fail even if a local
+  // copy exists, rather than quietly building with a different file.
   fail(
-    'google-services.json was not found in either location:\n' +
-      CANDIDATES.map((c) => `      - ${c}`).join('\n') +
+    `GOOGLE_SERVICES_JSON is set, but no file exists at:\n      ${envCandidate.file}\n\n` +
+      '    Check the EAS environment variable with: eas env:list <environment>'
+  );
+}
+
+const found = CANDIDATES.filter((c) => existsSync(c.file)).map((c) => ({
+  rel: c.label,
+  abs: c.file,
+}));
+
+if (found.length === 0 && !envCandidate) {
+  fail(
+    'google-services.json was not found in any location:\n' +
+      CANDIDATES.map((c) => `      - ${c.label}`).join('\n') +
       '\n\n' +
       '    This file is a credential and is deliberately gitignored, so a fresh\n' +
-      '    clone will not have it. Obtain it from the Firebase console for project\n' +
+      '    clone will not have it. On EAS it comes from the GOOGLE_SERVICES_JSON\n' +
+      '    file variable. Locally, obtain it from the Firebase console for project\n' +
       '    kaagapay-1406b (Project settings -> Your apps -> Android) and place it at\n' +
       '    the repository root. Never commit it.'
   );
@@ -86,8 +104,7 @@ if (found.length === 0) {
     fail('could not read android.package from app.json to cross-check against.');
   }
 
-  for (const rel of found) {
-    const abs = path.join(ROOT, rel);
+  for (const { rel, abs } of found) {
 
     if (statSync(abs).size === 0) {
       fail(`${rel} exists but is EMPTY (0 bytes).`);

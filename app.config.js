@@ -49,34 +49,30 @@
 // exactly the regression this file exists to prevent.
 //
 // -----------------------------------------------------------------------------
-// SECOND INCIDENT (2026-09): app.json's android.googleServicesFile pointed at
-// "./google-services.json", but that file is gitignored as a credential and
-// was never uploaded anywhere EAS could reach it. A fresh clone or
-// `prebuild --clean` -- what every EAS build does -- silently produced an
-// android/ with neither the file nor the com.google.gms.google-services
-// plugin. Gradle had nothing to object to, so the build succeeded and shipped
-// an APK that could install, open, and request a push token, and could never
-// actually receive one. scripts/check-push-credentials.mjs (wired as
-// eas-build-pre-install) now fails that build loudly instead -- but the guard
-// only detects the missing file, it does not supply it.
+// FIREBASE CONFIG (google-services.json)
 //
-// FIX: the real google-services.json is stored as an EAS file-type
-// environment variable (GOOGLE_SERVICES_JSON, scope: project, set for
-// development/preview/production) uploaded via
-//   eas env:set --name GOOGLE_SERVICES_JSON --value ./google-services.json --type file
-// On an EAS build, that variable resolves to an absolute local path to the
-// downloaded file; this file reads it at config-eval time and points
-// googleServicesFile there instead of the static app.json path. Locally
-// (`expo start`, `expo run:android`), the env var is unset, so this falls
-// back to app.json's own "./google-services.json" -- the same convention the
-// push-credentials guard already checks for.
+// Push notifications need Android's Firebase config. The file is a gitignored
+// credential, so where it comes from depends on the environment:
+//
+//   EAS build     GOOGLE_SERVICES_JSON, a file-type EAS environment variable
+//                 set for development/preview/production with
+//                   eas env:set --name GOOGLE_SERVICES_JSON --type file ...
+//   local build   ./google-services.json at the project root
+//   CI            none, deliberately: CI builds are never shipped
+//
+// scripts/google-services-path.cjs decides which applies, and the pre-build
+// check (scripts/check-push-credentials.mjs) uses the same module, so the
+// declaration here and the check can no longer disagree. The file is declared
+// only when it actually exists: declaring a missing file makes `expo prebuild`
+// throw, which is how an unconditional declaration in app.json (b63c45e) would
+// have broken CI's APK boot test. Full history in that module.
 const appJson = require('./app.json');
+const { resolveGoogleServicesSource } = require('./scripts/google-services-path.cjs');
 
 module.exports = ({ config }) => {
   const base = config ?? appJson.expo;
 
   const baseUrl = (process.env.EXPO_BASE_URL || '').trim();
-  const googleServicesFile = (process.env.GOOGLE_SERVICES_JSON || '').trim();
 
   let result = base;
 
@@ -106,15 +102,14 @@ module.exports = ({ config }) => {
     };
   }
 
-  if (googleServicesFile) {
-    result = {
-      ...result,
-      android: {
-        ...result.android,
-        googleServicesFile,
-      },
-    };
-  }
+  // Declare the Firebase config only when a real file exists (see above).
+  const googleServices = resolveGoogleServicesSource(__dirname);
+  const { googleServicesFile: _declared, ...android } = result.android ?? {};
 
-  return result;
+  return {
+    ...result,
+    android: googleServices
+      ? { ...android, googleServicesFile: googleServices.configPath }
+      : android,
+  };
 };
