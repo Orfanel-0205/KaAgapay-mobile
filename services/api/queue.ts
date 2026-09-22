@@ -65,7 +65,29 @@ export async function fetchMyQueueTicket(): Promise<QueueStatus | null> {
       return null;
     }
 
-    return normalizeQueueTicket(payload);
+    /*
+     * Where this patient actually stands, worked out by the server at the
+     * moment they asked.
+     *
+     * The ticket carries a queue_position, but it is written once when the
+     * ticket is issued and never changes as the queue moves, so showing it
+     * told people a number that quietly went stale while they waited. The
+     * live count arrives alongside the ticket and wins where present.
+     */
+    const position = response.data?.position ?? null;
+
+    return {
+      ...normalizeQueueTicket(payload),
+
+      ...(position
+        ? {
+            position: position.place_in_line ?? null,
+            people_ahead: position.people_ahead ?? null,
+            is_next: !!position.is_next,
+            estimated_wait_minutes: position.estimated_minutes ?? null,
+          }
+        : {}),
+    };
   } catch (error: any) {
     const status = error?.response?.status;
 

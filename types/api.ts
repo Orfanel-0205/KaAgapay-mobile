@@ -64,7 +64,13 @@ export const flattenErrors = (error: LaravelValidationError): string =>
 // --------------------------------------------------------------------------
 export interface QueueStatus {
   ticket_number: string | null;
+
+  /** 1-based place in line, worked out live rather than when issued. */
   position: number | null;
+  people_ahead?: number | null;
+  is_next?: boolean;
+
+  /** Null when the desk has served nobody yet, so no honest estimate exists. */
   estimated_wait_minutes: number | null;
   status: "waiting" | "called" | "serving" | "completed" | "done" | null;
   rhu_id?: number | null;

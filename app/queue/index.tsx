@@ -231,6 +231,47 @@ export default function QueueStatusScreen() {
               {ticket.ticket_number ?? ticket.queue_number ?? "—"}
             </Text>
 
+            {/* The question every waiting patient is actually asking. Shown
+                only while waiting: once they are called it is answered, and
+                a stale "2 ahead of you" beside "go to the desk" is worse
+                than nothing. */}
+            {status === "waiting" ? (
+              <View
+                style={{
+                  backgroundColor: "#ECFDF5",
+                  borderRadius: 16,
+                  padding: 16,
+                  marginBottom: 14,
+                  borderWidth: 1,
+                  borderColor: "#A7F3D0",
+                }}
+              >
+                <Text style={{ fontSize: 22, fontWeight: "900", color: "#047857" }}>
+                  {ticket.is_next
+                    ? "You are next"
+                    : ticket.people_ahead != null
+                      ? ticket.people_ahead === 1
+                        ? "1 person ahead of you"
+                        : `${ticket.people_ahead} people ahead of you`
+                      : "Waiting"}
+                </Text>
+
+                {ticket.estimated_wait_minutes != null ? (
+                  <Text style={{ fontSize: 15, color: "#065F46", marginTop: 4 }}>
+                    Around {ticket.estimated_wait_minutes} minute
+                    {ticket.estimated_wait_minutes === 1 ? "" : "s"}, if today keeps its pace.
+                  </Text>
+                ) : (
+                  // No estimate rather than a confident zero: somebody who
+                  // leaves on a made-up number comes back late and is
+                  // marked absent.
+                  <Text style={{ fontSize: 15, color: "#065F46", marginTop: 4 }}>
+                    Please stay nearby. We cannot estimate the wait yet today.
+                  </Text>
+                )}
+              </View>
+            ) : null}
+
             <View
               style={{
                 backgroundColor: "#F0FDFA",
