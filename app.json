@@ -59,7 +59,13 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Kailangan ang mikropono para makapagpadala ng voice message sa assistant."
+        }
+      ]
     ],
     "extra": {
       "router": {},
