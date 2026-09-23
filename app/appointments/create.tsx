@@ -31,6 +31,11 @@ import {
   type ConsultationType,
 } from "../../services/api/appointments";
 import { getProfile, updateProfile } from "../../services/api/profile";
+import {
+  FALLBACK_RHUS,
+  getMobileRhus,
+  type MobileRhu,
+} from "../../services/api/rhus";
 import { scanPhilHealth, maskPhilHealth } from "../../services/api/ocr";
 import {
   resolveProfileCompletion,
@@ -155,10 +160,40 @@ export default function CreateAppointmentScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [completion, setCompletion] = useState<ProfileCompletion | null>(null);
 
-  const RHU_OPTIONS = [
-    { id: 1, label: "RHU 1", sub: "Poblacion / Main RHU" },
-    { id: 2, label: "RHU 2", sub: "Secondary RHU" },
-  ];
+  /*
+   * The facilities a resident can book at.
+   *
+   * These were two objects written in here. Malasiqui runs RHU 1 and 2, so
+   * that was true until Administration -> RHU Facilities shipped: a super
+   * admin can now open RHU 3 from the dashboard and staff see it at once,
+   * while residents could not book it until this app was rebuilt and pushed
+   * through the store.
+   *
+   * Seeded with the same two rather than an empty array, because a booking
+   * form with no facility to choose cannot be submitted at all.
+   */
+  const [rhuOptions, setRhuOptions] = useState<MobileRhu[]>(FALLBACK_RHUS);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getMobileRhus().then((rows) => {
+      if (cancelled) return;
+
+      setRhuOptions(rows);
+
+      // The facility that was selected may have been closed since. Move to
+      // the first open one rather than submitting an id the server will
+      // reject after the resident has filled in everything else.
+      setRhuId((current) =>
+        rows.some((row) => row.id === current) ? current : rows[0]?.id ?? current
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Prefill from the patient's existing profile / resident profile.
   useEffect(() => {
@@ -511,7 +546,7 @@ export default function CreateAppointmentScreen() {
           {/* RHU */}
           <SectionTitle>Choose RHU</SectionTitle>
           <Row>
-            {RHU_OPTIONS.map((o) => (
+            {rhuOptions.map((o) => (
               <SelectCard
                 key={o.id}
                 active={rhuId === o.id}
