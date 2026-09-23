@@ -725,12 +725,24 @@ export default function CreateAppointmentScreen() {
             <DateTimePicker
               value={pickerValueFor()}
               mode={activePicker === "time" ? "time" : "date"}
+              /*
+               * Time is always the scrolling spinner.
+               *
+               * On Android "default" gives the radial clock face, where
+               * picking 9:00 means dragging a hand to 9 and then a second
+               * hand to 00, with the inner ring of 13-23 sitting next to the
+               * outer 1-12. Residents booking an appointment read it as a
+               * puzzle. The spinner is two lists of numbers.
+               *
+               * Dates keep their platform default: a month grid is already
+               * the familiar shape for picking a day.
+               */
               display={
-                Platform.OS === "ios"
-                  ? activePicker === "time"
-                    ? "spinner"
-                    : "inline"
-                  : "default"
+                activePicker === "time"
+                  ? "spinner"
+                  : Platform.OS === "ios"
+                    ? "inline"
+                    : "default"
               }
               minimumDate={activePicker === "consultation" ? new Date() : undefined}
               onChange={onPickerChange}

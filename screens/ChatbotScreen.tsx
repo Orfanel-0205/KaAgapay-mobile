@@ -43,6 +43,9 @@ import {
 } from "../services/api/chatbot";
 
 import { useLanguageStore, type Lang } from "../store/useLanguageStore";
+import * as ImagePicker from "expo-image-picker";
+import { useVoiceNote } from "../hooks/useVoiceNote";
+import type { ChatAttachment } from "../services/api/chatbot";
 
 const CHATBOT_ICON = require("../assets/chatbotdoctorquack.png");
 
@@ -136,6 +139,56 @@ const TEXTS: Record<string, Record<Lang, string>> = {
     en: "Type your question...",
     tl: "I-type ang tanong mo...",
     pag: "I-type so tepet mo...",
+  },
+  sent_voice: {
+    en: "[voice message]",
+    tl: "[voice message]",
+    pag: "[voice message]",
+  },
+  sent_photo: {
+    en: "[photo]",
+    tl: "[larawan]",
+    pag: "[litrato]",
+  },
+  recording: {
+    en: "Recording... tap to send",
+    tl: "Nagre-record... i-tap para ipadala",
+    pag: "Manrerekord... i-tap pian ibaki",
+  },
+  mic_title: {
+    en: "Microphone",
+    tl: "Mikropono",
+    pag: "Mikropono",
+  },
+  mic_denied: {
+    en: "Allow microphone access to send a voice message.",
+    tl: "Payagan ang mikropono para makapagpadala ng voice message.",
+    pag: "Abuloyan so mikropono pian makapangibaki na voice message.",
+  },
+  photo_title: {
+    en: "Send a photo",
+    tl: "Magpadala ng larawan",
+    pag: "Mangibaki na litrato",
+  },
+  photo_body: {
+    en: "A photo of a rash, a wound, a prescription or a lab result.",
+    tl: "Larawan ng pantal, sugat, reseta, o lab result.",
+    pag: "Litrato na pantal, sugat, reseta, odino lab result.",
+  },
+  photo_camera: {
+    en: "Take a photo",
+    tl: "Kumuha ng larawan",
+    pag: "Mangala na litrato",
+  },
+  photo_gallery: {
+    en: "Choose from gallery",
+    tl: "Pumili sa gallery",
+    pag: "Mamili ed gallery",
+  },
+  photo_denied: {
+    en: "Allow access to send a photo.",
+    tl: "Payagan ang access para makapagpadala ng larawan.",
+    pag: "Abuloyan so access pian makapangibaki na litrato.",
   },
   welcome: {
     en:
@@ -764,15 +817,112 @@ export default function ChatbotScreen() {
     ]);
   };
 
-  const sendMessage = async (manualText?: string) => {
+  const voice = useVoiceNote();
+
+  /*
+   * Speaking the question instead of typing it.
+   *
+   * Tap to start, tap again to send. Hold-to-talk was the other option
+   * and is worse here: it cannot be used one-handed while holding a baby,
+   * and a finger sliding off the button mid-sentence loses the recording
+   * with no way to get it back.
+   */
+  const onMicPress = async () => {
+    if (sending) return;
+
+    if (voice.isRecording) {
+      const note = await voice.stop();
+
+      if (note) {
+        await sendMessage("", {
+          uri: note.uri,
+          mime: note.mime,
+          name: note.name,
+        });
+      }
+
+      return;
+    }
+
+    const started = await voice.start();
+
+    if (!started) {
+      Alert.alert(t("mic_title", lang), t("mic_denied", lang));
+    }
+  };
+
+  /*
+   * Sending a photo.
+   *
+   * Camera and gallery both offered: a rash is photographed there and
+   * then, a prescription or a lab result is usually already in the
+   * gallery. Quality is dropped to 0.7 because a full-resolution phone
+   * photo is several megabytes on barangay mobile data and the model does
+   * not need it.
+   */
+  const onPhotoPress = () => {
+    if (sending || voice.isRecording) return;
+
+    Alert.alert(t("photo_title", lang), t("photo_body", lang), [
+      { text: t("photo_camera", lang), onPress: () => pickPhoto("camera") },
+      { text: t("photo_gallery", lang), onPress: () => pickPhoto("gallery") },
+      { text: t("cancel", lang), style: "cancel" },
+    ]);
+  };
+
+  const pickPhoto = async (source: "camera" | "gallery") => {
+    const permission =
+      source === "camera"
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(t("photo_title", lang), t("photo_denied", lang));
+      return;
+    }
+
+    const options = {
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+      allowsEditing: false,
+    } as const;
+
+    const result =
+      source === "camera"
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
+
+    if (result.canceled || !result.assets?.length) return;
+
+    const asset = result.assets[0];
+
+    await sendMessage(input.trim(), {
+      uri: asset.uri,
+      mime: asset.mimeType ?? "image/jpeg",
+      name: asset.fileName ?? `photo-${Date.now()}.jpg`,
+    });
+
+    setInput("");
+  };
+
+  const sendMessage = async (
+    manualText?: string,
+    attachment?: ChatAttachment | null
+  ) => {
     const text = (manualText ?? input).trim();
 
-    if (!text || sending) return;
+    // A photo or a voice note is a message on its own: people often send
+    // one with nothing typed.
+    if ((!text && !attachment) || sending) return;
 
     const userMessage: ChatMessage = {
       id: `local-user-${Date.now()}`,
       role: "user",
-      content: text,
+      content:
+        text ||
+        (attachment?.mime.startsWith("audio/")
+          ? t("sent_voice", lang)
+          : t("sent_photo", lang)),
       timestamp: new Date().toISOString(),
     };
 
@@ -793,6 +943,7 @@ export default function ChatbotScreen() {
         ),
         appSection: "chatbot",
         language: lang,
+        attachment,
       });
 
       if (response.session_id) {
@@ -971,15 +1122,72 @@ export default function ChatbotScreen() {
               },
             ]}
           >
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder={t("placeholder", lang)}
-              placeholderTextColor={FAINT}
-              style={styles.input}
-              multiline
-              maxLength={2000}
-            />
+            {/*
+                While recording, the text field is replaced by the elapsed
+                time. Leaving it in place invites typing into a box whose
+                contents are about to be replaced by a voice note.
+            */}
+            {voice.isRecording ? (
+              <View style={styles.recordingStrip}>
+                <View style={styles.recordingDot} />
+                <Text style={styles.recordingText} numberOfLines={1}>
+                  {t("recording", lang)}
+                </Text>
+                <Text style={styles.recordingTime}>
+                  {String(Math.floor(voice.seconds / 60)).padStart(1, "0")}:
+                  {String(voice.seconds % 60).padStart(2, "0")}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <TouchableOpacity
+                  onPress={onPhotoPress}
+                  disabled={sending}
+                  activeOpacity={0.7}
+                  style={styles.composerIcon}
+                  accessibilityLabel={t("photo_title", lang)}
+                >
+                  <Ionicons
+                    name="image-outline"
+                    size={adaptive.size(22)}
+                    color={sending ? FAINT : "#0F766E"}
+                  />
+                </TouchableOpacity>
+
+                <TextInput
+                  value={input}
+                  onChangeText={setInput}
+                  placeholder={t("placeholder", lang)}
+                  placeholderTextColor={FAINT}
+                  style={styles.input}
+                  multiline
+                  maxLength={2000}
+                />
+              </>
+            )}
+
+            {/*
+                The mic replaces Send only while there is nothing typed.
+                Someone who has written a question wants to send it, not to
+                discover the button has become a microphone.
+            */}
+            {!input.trim() && !sending ? (
+              <TouchableOpacity
+                onPress={onMicPress}
+                activeOpacity={0.85}
+                style={[
+                  styles.sendButton,
+                  voice.isRecording ? styles.micButtonActive : null,
+                ]}
+                accessibilityLabel={t("mic_title", lang)}
+              >
+                <Ionicons
+                  name={voice.isRecording ? "send" : "mic"}
+                  size={adaptive.size(20)}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            ) : null}
 
             <TouchableOpacity
               onPress={() => sendMessage()}
@@ -988,6 +1196,8 @@ export default function ChatbotScreen() {
               style={[
                 styles.sendButton,
                 sending || !input.trim() ? styles.sendButtonDisabled : null,
+                // Hidden while the mic occupies this slot.
+                !input.trim() && !sending ? styles.hidden : null,
               ]}
             >
               {sending ? (
@@ -1259,6 +1469,48 @@ const makeStyles = (adaptive: ReturnType<typeof useAdaptive>) =>
     },
     sendButtonDisabled: {
       backgroundColor: "#99F6E4",
+    },
+    // The Send button keeps its slot in the row while the mic stands in
+    // for it, so the composer does not jump as you start typing.
+    hidden: {
+      display: "none",
+    },
+    composerIcon: {
+      width: adaptive.size(38),
+      height: adaptive.size(38),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    micButtonActive: {
+      backgroundColor: "#B91C1C",
+    },
+    recordingStrip: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: adaptive.size(8),
+      paddingHorizontal: adaptive.size(14),
+      paddingVertical: adaptive.size(10),
+      borderRadius: adaptive.size(22),
+      backgroundColor: "#FEF2F2",
+    },
+    recordingDot: {
+      width: adaptive.size(9),
+      height: adaptive.size(9),
+      borderRadius: adaptive.size(5),
+      backgroundColor: "#B91C1C",
+    },
+    recordingText: {
+      flex: 1,
+      fontSize: adaptive.font(13),
+      fontWeight: "600",
+      color: "#B91C1C",
+    },
+    recordingTime: {
+      fontSize: adaptive.font(13),
+      fontWeight: "700",
+      color: "#B91C1C",
+      fontVariant: ["tabular-nums"],
     },
     modalBackdrop: {
       flex: 1,
