@@ -9,18 +9,27 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://rhu-kaagapay.129-212-236-47.sslip.io/api/v1"
       }
     },
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://rhu-kaagapay.129-212-236-47.sslip.io/api/v1"
       }
     },
     "production": {
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://rhu-kaagapay.129-212-236-47.sslip.io/api/v1"
       }
     }
   },
