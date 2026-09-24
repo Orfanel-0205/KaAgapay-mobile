@@ -8,10 +8,11 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "check:push-credentials": "node scripts/check-push-credentials.mjs",
-    "eas-build-pre-install": "node scripts/check-push-credentials.mjs",
+    "eas-build-pre-install": "node scripts/check-expo-versions.mjs && node scripts/check-push-credentials.mjs",
     "build:preview": "eas build --profile preview --platform android",
     "build:production": "eas build --profile production --platform android",
-    "submit:production": "eas submit --profile production --platform android"
+    "submit:production": "eas submit --profile production --platform android",
+    "check:expo-versions": "node scripts/check-expo-versions.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -21,6 +22,7 @@
     "axios": "^1.16.0",
     "babel-preset-expo": "~54.0.10",
     "expo": "~54.0.37",
+    "expo-asset": "~12.0.13",
     "expo-audio": "~1.1.1",
     "expo-build-properties": "~1.0.10",
     "expo-camera": "~17.0.10",
