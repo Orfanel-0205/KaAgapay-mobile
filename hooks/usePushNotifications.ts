@@ -58,22 +58,81 @@ function routeFromNotificationData(data: Record<string, any>) {
  * FCM". The notification simply never appears.
  *
  * That is exactly what was happening. This app created only "queue-alerts",
- * while App\Services\Notification\NotificationService sends on four ids:
+ * while App\Services\Notification\NotificationService sends on five ids.
  *
- *   queue-alerts        queue position called        (worked -- channel existed)
- *   default             general notifications        (silently dropped)
- *   telemedicine-calls  incoming consultation call   (silently dropped)
- *   follow-up-reminders follow-up due                (silently dropped)
+ * On 2026-09-24 the same check found "appointment-reminders" still missing:
+ * NotificationService.php:915 has been sending on it, and every one of those
+ * "your appointment is tomorrow" pushes was being dropped on Android while
+ * reporting delivered at every step. It is in the list below now.
  *
- * Verified against the server on 2026-09-06 by grepping every `channelId:`
- * argument passed to ExpoPushService::sendToUser. If a new channel id is added
- * there, add it here in the same change or those notifications vanish.
+ * Verified against the server by grepping every `channelId:` argument passed
+ * to ExpoPushService::sendToUser. If a new channel id is added there, add it
+ * here in the same change or those notifications vanish.
+ *
+ * WHY THE ids CARRY A VERSION
+ * ---------------------------
+ * A channel's sound is fixed when the channel is first created. Setting a
+ * different sound on an id that already exists on a device does nothing --
+ * no error, the old sound just keeps playing -- and deleting the channel to
+ * recreate it does not help either, because Android restores a deleted
+ * channel with its original settings if the id comes back.
+ *
+ * So giving these channels their own sounds meant new ids. The server sends
+ * the -v2 ids to match. That coupling is the price of per-sound channels:
+ * the app has to be installed before the server starts sending the new ids,
+ * or the pushes land on channels that do not exist yet.
  */
-const ANDROID_CHANNELS: Array<{ id: string; name: string }> = [
-  { id: "queue-alerts", name: "Queue Alerts" },
-  { id: "default", name: "General Notifications" },
-  { id: "telemedicine-calls", name: "Telemedicine Calls" },
-  { id: "follow-up-reminders", name: "Follow-up Reminders" },
+const ANDROID_CHANNELS: Array<{
+  id: string;
+  name: string;
+  description: string;
+  sound: string;
+}> = [
+  {
+    id: "queue-alerts-v2",
+    name: "Queue Alerts",
+    description: "When your number is called at the RHU.",
+    sound: "queue_calling.mp3",
+  },
+  {
+    id: "telemedicine-calls-v2",
+    name: "Telemedicine Calls",
+    description: "When a health worker starts your online consultation.",
+    sound: "telemedicine_call.mp3",
+  },
+  {
+    id: "appointment-reminders-v2",
+    name: "Appointment Reminders",
+    description: "The day before and the morning of your appointment.",
+    sound: "appointment_reminder.mp3",
+  },
+  {
+    id: "follow-up-reminders-v2",
+    name: "Follow-up Reminders",
+    description: "When a follow-up visit is due.",
+    sound: "appointment_reminder.mp3",
+  },
+  {
+    id: "default-v2",
+    name: "General Notifications",
+    description: "Bookings, approvals and announcements.",
+    sound: "normal_notification.mp3",
+  },
+];
+
+/*
+ * The ids this app used before the sounds existed.
+ *
+ * Still created, so a push sent by a server that has not been updated yet
+ * still arrives -- silently on the default tone, but it arrives. Remove
+ * these once every install is past this version.
+ */
+const LEGACY_CHANNELS: Array<{ id: string; name: string }> = [
+  { id: "queue-alerts", name: "Queue Alerts (old)" },
+  { id: "default", name: "General Notifications (old)" },
+  { id: "telemedicine-calls", name: "Telemedicine Calls (old)" },
+  { id: "follow-up-reminders", name: "Follow-up Reminders (old)" },
+  { id: "appointment-reminders", name: "Appointment Reminders (old)" },
 ];
 
 async function configureAndroidChannels() {
@@ -82,6 +141,20 @@ async function configureAndroidChannels() {
   }
 
   for (const channel of ANDROID_CHANNELS) {
+    await Notifications.setNotificationChannelAsync(channel.id, {
+      name: channel.name,
+      description: channel.description,
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: "#0F766E",
+      // Bundled by the expo-notifications plugin from assets/sounds.
+      // The filename must match exactly, extension included.
+      sound: channel.sound,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+  }
+
+  for (const channel of LEGACY_CHANNELS) {
     await Notifications.setNotificationChannelAsync(channel.id, {
       name: channel.name,
       importance: Notifications.AndroidImportance.MAX,

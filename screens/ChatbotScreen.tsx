@@ -46,6 +46,7 @@ import { useLanguageStore, type Lang } from "../store/useLanguageStore";
 import * as ImagePicker from "expo-image-picker";
 import { useVoiceNote } from "../hooks/useVoiceNote";
 import { useReadAloud } from "../hooks/useReadAloud";
+import { keepChatImage } from "../services/chatImageStore";
 import type { ChatAttachment } from "../services/api/chatbot";
 
 const CHATBOT_ICON = require("../assets/chatbotdoctorquack.png");
@@ -160,6 +161,11 @@ const TEXTS: Record<string, Record<Lang, string>> = {
     en: "[photo]",
     tl: "[larawan]",
     pag: "[litrato]",
+  },
+  photo_sent: {
+    en: "Photo sent",
+    tl: "Naipadala ang larawan",
+    pag: "Niibaki so litrato",
   },
   recording: {
     en: "Recording... tap to send",
@@ -361,8 +367,11 @@ function MessageBubble({
   lang,
   isSpeaking,
   onToggleSpeech,
+  imageUri,
 }: {
   item: ChatMessage;
+  /** A photo this person sent, kept on their own phone. */
+  imageUri?: string;
   lang: Lang;
   isSpeaking: boolean;
   onToggleSpeech: (id: string, text: string) => void;
@@ -399,13 +408,23 @@ function MessageBubble({
       ) : null}
 
       <View style={[styles.bubble, isUser ? styles.userBubble : styles.botBubble]}>
+        {imageUri ? (
+          <Image
+            source={{ uri: imageUri }}
+            style={styles.sentImage}
+            resizeMode="cover"
+          />
+        ) : null}
+
         <Text
           style={[
             styles.bubbleText,
             isUser ? styles.userBubbleText : styles.botBubbleText,
           ]}
         >
-          {item.content}
+          {imageUri && /^\[.*\]$/.test(item.content.trim())
+            ? t("photo_sent", lang)
+            : item.content}
         </Text>
 
         <View style={styles.bubbleFooter}>
@@ -877,6 +896,9 @@ export default function ChatbotScreen() {
   const voice = useVoiceNote();
   const speech = useReadAloud(lang);
 
+  // Message id -> the copy of the photo kept on this phone.
+  const [sentImages, setSentImages] = useState<Record<string, string>>({});
+
   /*
    * Speaking the question instead of typing it.
    *
@@ -973,8 +995,10 @@ export default function ChatbotScreen() {
     // one with nothing typed.
     if ((!text && !attachment) || sending) return;
 
+    const localId = `local-user-${Date.now()}`;
+
     const userMessage: ChatMessage = {
-      id: `local-user-${Date.now()}`,
+      id: localId,
       role: "user",
       content:
         text ||
@@ -983,6 +1007,21 @@ export default function ChatbotScreen() {
           : t("sent_photo", lang)),
       timestamp: new Date().toISOString(),
     };
+
+    /*
+     * Keep the photo on this phone so the bubble can show it.
+     *
+     * The picker hands back a cache path the system may clear at any time,
+     * and the server never stores the image, so without a copy of our own
+     * the bubble is empty the next time the chat is opened.
+     */
+    if (attachment && !attachment.mime.startsWith("audio/")) {
+      const kept = await keepChatImage(attachment.uri, localId);
+
+      if (kept) {
+        setSentImages((previous) => ({ ...previous, [localId]: kept }));
+      }
+    }
 
     const nextMessages = [...messages, userMessage];
 
@@ -1130,6 +1169,7 @@ export default function ChatbotScreen() {
                 lang={lang}
                 isSpeaking={speech.speakingId === item.id}
                 onToggleSpeech={speech.toggle}
+                imageUri={sentImages[item.id]}
               />
             )}
             contentContainerStyle={styles.messagesContent}
@@ -1444,6 +1484,15 @@ const makeStyles = (adaptive: ReturnType<typeof useAdaptive>) =>
     },
     timeText: {
       fontSize: adaptive.font(10),
+    },
+    // A photo the resident sent, shown in their own bubble. Fixed aspect so
+    // a portrait and a landscape shot do not make neighbouring bubbles jump.
+    sentImage: {
+      width: "100%",
+      aspectRatio: 4 / 3,
+      borderRadius: adaptive.size(12),
+      marginBottom: adaptive.size(8),
+      backgroundColor: "#0F766E22",
     },
     speakButton: {
       flexDirection: "row",

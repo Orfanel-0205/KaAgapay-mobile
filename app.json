@@ -65,6 +65,17 @@
         {
           "microphonePermission": "Kailangan ang mikropono para makapagpadala ng voice message sa assistant."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./assets/sounds/queue_calling.mp3",
+            "./assets/sounds/normal_notification.mp3",
+            "./assets/sounds/telemedicine_call.mp3",
+            "./assets/sounds/appointment_reminder.mp3"
+          ]
+        }
       ]
     ],
     "extra": {
