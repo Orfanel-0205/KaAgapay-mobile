@@ -4,6 +4,8 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { forgetAllChatImages } from "../services/chatImageStore";
+
 export interface User {
   user_id: number;
   first_name: string;
@@ -98,12 +100,27 @@ export const useAuthStore = create<AuthState>()(
           user: state.user ? { ...state.user, ...partial } : null,
         })),
 
-      logout: () =>
+      logout: () => {
+        /*
+         * Take the kept chat photos with the session.
+         *
+         * The app stores photos a resident sent the assistant in its own
+         * private storage. Signing out is the point at which someone has
+         * finished with this phone -- often a shared one -- and leaving
+         * pictures of somebody's rash for the next person to find is not
+         * what signing out is understood to mean.
+         *
+         * Deliberately not awaited: logging out must not wait on the file
+         * system, and the helper swallows its own errors.
+         */
+        void forgetAllChatImages();
+
         set({
           user: null,
           token: null,
           isAuthenticated: false,
-        }),
+        });
+      },
 
       setHydrated: () => set({ hydrated: true }),
     }),

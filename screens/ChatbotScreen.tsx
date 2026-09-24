@@ -46,7 +46,11 @@ import { useLanguageStore, type Lang } from "../store/useLanguageStore";
 import * as ImagePicker from "expo-image-picker";
 import { useVoiceNote } from "../hooks/useVoiceNote";
 import { useReadAloud } from "../hooks/useReadAloud";
-import { keepChatImage } from "../services/chatImageStore";
+import {
+  forgetAllChatImages,
+  forgetChatImages,
+  keepChatImage,
+} from "../services/chatImageStore";
 import type { ChatAttachment } from "../services/api/chatbot";
 
 const CHATBOT_ICON = require("../assets/chatbotdoctorquack.png");
@@ -876,11 +880,30 @@ export default function ChatbotScreen() {
           try {
             await deleteMobileChatSession(session.id);
 
+            /*
+             * The photos go with the conversation.
+             *
+             * The server never stored them; this app does, in its own
+             * private storage, so "delete this chat" has to mean the
+             * pictures too. Anything else leaves health photographs on the
+             * phone after the person believes they have removed them.
+             *
+             * Only this session's images are known here -- the ones
+             * currently loaded. Photos from an older conversation that was
+             * never reopened this session are not in memory to be named,
+             * and are cleared by the forty-image cap or by signing out,
+             * which wipes the directory outright.
+             */
+            const ids = messages.map((message) => message.id);
+
+            await forgetChatImages(ids);
+
             if (currentSessionId === session.id) {
               setCurrentSessionId(null);
               setMessages([createWelcomeMessage(lang)]);
               setTutorialCards([]);
               setSuggestedAction(null);
+              setSentImages({});
             }
 
             await loadSessions();
