@@ -45,6 +45,7 @@ import {
 import { useLanguageStore, type Lang } from "../store/useLanguageStore";
 import * as ImagePicker from "expo-image-picker";
 import { useVoiceNote } from "../hooks/useVoiceNote";
+import { useReadAloud } from "../hooks/useReadAloud";
 import type { ChatAttachment } from "../services/api/chatbot";
 
 const CHATBOT_ICON = require("../assets/chatbotdoctorquack.png");
@@ -144,6 +145,16 @@ const TEXTS: Record<string, Record<Lang, string>> = {
     en: "[voice message]",
     tl: "[voice message]",
     pag: "[voice message]",
+  },
+  read_aloud: {
+    en: "Read aloud",
+    tl: "Basahin nang malakas",
+    pag: "Basaen ya maksil",
+  },
+  stop_reading: {
+    en: "Stop reading",
+    tl: "Itigil ang pagbasa",
+    pag: "Itunda so panagbasa",
   },
   sent_photo: {
     en: "[photo]",
@@ -345,7 +356,17 @@ function useAdaptive() {
   };
 }
 
-function MessageBubble({ item }: { item: ChatMessage }) {
+function MessageBubble({
+  item,
+  lang,
+  isSpeaking,
+  onToggleSpeech,
+}: {
+  item: ChatMessage;
+  lang: Lang;
+  isSpeaking: boolean;
+  onToggleSpeech: (id: string, text: string) => void;
+}) {
   const adaptive = useAdaptive();
   const styles = useMemo(
     () => makeStyles(adaptive),
@@ -353,6 +374,14 @@ function MessageBubble({ item }: { item: ChatMessage }) {
   );
 
   const isUser = item.role === "user";
+
+  /*
+   * Only the assistant gets a speaker, and only when there is something
+   * worth hearing. Reading "[photo]" back to the person who just sent it
+   * is noise.
+   */
+  const canSpeak =
+    !isUser && item.content.trim().length > 0 && !/^\[.*\]$/.test(item.content.trim());
 
   return (
     <View
@@ -379,14 +408,42 @@ function MessageBubble({ item }: { item: ChatMessage }) {
           {item.content}
         </Text>
 
-        <Text
-          style={[
-            styles.timeText,
-            isUser ? styles.userTimeText : styles.botTimeText,
-          ]}
-        >
-          {formatTime(item.timestamp)}
-        </Text>
+        <View style={styles.bubbleFooter}>
+          {canSpeak ? (
+            <TouchableOpacity
+              onPress={() => onToggleSpeech(item.id, item.content)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.speakButton}
+              accessibilityLabel={
+                isSpeaking ? t("stop_reading", lang) : t("read_aloud", lang)
+              }
+            >
+              <Ionicons
+                name={isSpeaking ? "stop-circle" : "volume-medium-outline"}
+                size={adaptive.size(18)}
+                color={isSpeaking ? "#B91C1C" : BRAND}
+              />
+
+              <Text
+                style={[
+                  styles.speakLabel,
+                  isSpeaking ? styles.speakLabelActive : null,
+                ]}
+              >
+                {isSpeaking ? t("stop_reading", lang) : t("read_aloud", lang)}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <Text
+            style={[
+              styles.timeText,
+              isUser ? styles.userTimeText : styles.botTimeText,
+            ]}
+          >
+            {formatTime(item.timestamp)}
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -818,6 +875,7 @@ export default function ChatbotScreen() {
   };
 
   const voice = useVoiceNote();
+  const speech = useReadAloud(lang);
 
   /*
    * Speaking the question instead of typing it.
@@ -950,6 +1008,9 @@ export default function ChatbotScreen() {
         setCurrentSessionId(response.session_id);
       }
 
+      // Whatever was being read belongs to the previous answer.
+      speech.stop();
+
       setMessages((previous) => [...previous, response.message]);
       setTutorialCards(response.tutorial_cards ?? []);
       setSuggestedAction(response.suggested_action ?? null);
@@ -1063,7 +1124,14 @@ export default function ChatbotScreen() {
             ref={listRef}
             data={messages}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <MessageBubble item={item} />}
+            renderItem={({ item }) => (
+              <MessageBubble
+                item={item}
+                lang={lang}
+                isSpeaking={speech.speakingId === item.id}
+                onToggleSpeech={speech.toggle}
+              />
+            )}
             contentContainerStyle={styles.messagesContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -1365,10 +1433,34 @@ const makeStyles = (adaptive: ReturnType<typeof useAdaptive>) =>
     botBubbleText: {
       color: "#374151",
     },
+    // The timestamp and the speaker share a row, so the button does not
+    // add a line of height to every reply.
+    bubbleFooter: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      gap: adaptive.size(10),
+      marginTop: adaptive.size(7),
+    },
     timeText: {
       fontSize: adaptive.font(10),
-      marginTop: adaptive.size(7),
-      alignSelf: "flex-end",
+    },
+    speakButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: adaptive.size(4),
+      paddingVertical: adaptive.size(2),
+      // Pushes the timestamp to the far edge; without it the two sit
+      // together on the right.
+      marginRight: "auto",
+    },
+    speakLabel: {
+      fontSize: adaptive.font(11),
+      fontWeight: "600",
+      color: BRAND,
+    },
+    speakLabelActive: {
+      color: "#B91C1C",
     },
     userTimeText: {
       color: BRAND_SOFT,
