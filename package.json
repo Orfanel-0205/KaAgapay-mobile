@@ -12,7 +12,8 @@
     "build:preview": "eas build --profile preview --platform android",
     "build:production": "eas build --profile production --platform android",
     "submit:production": "eas submit --profile production --platform android",
-    "check:expo-versions": "node scripts/check-expo-versions.mjs"
+    "check:expo-versions": "node scripts/check-expo-versions.mjs",
+    "test": "jest"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -58,8 +59,11 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.14",
     "@types/react": "~19.1.0",
     "eas-cli": "^24.7.0",
+    "jest": "~29.7.0",
+    "jest-expo": "~54.0.18",
     "postcss": "^8.5.15",
     "prettier-plugin-tailwindcss": "^0.5.11",
     "typescript": "~5.9.2"
@@ -76,5 +80,11 @@
   },
   "overrides": {
     "lightningcss": "1.30.1"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "testMatch": [
+      "<rootDir>/__tests__/**/*.test.ts?(x)"
+    ]
   }
 }

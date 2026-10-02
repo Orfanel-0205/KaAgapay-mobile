@@ -53,6 +53,12 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      # Rules that fail without a visible symptom: a PhilHealth number shown
+      # unmasked still renders fine, and a booking gate that is too strict
+      # still compiles. Only a test notices either.
+      - name: Unit tests
+        run: npx jest --ci
+
       # The real gate. Asserts that:
       #   - a native build resolves with NO experiments.baseUrl
       #     (the exact 2026-09-03 cold-start cause)
