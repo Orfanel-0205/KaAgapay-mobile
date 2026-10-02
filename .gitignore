@@ -44,6 +44,11 @@ yarn-error.*
 .env
 google-services.json
 fcm-service-account.json
+# Google Play service account keys. A key grants publishing rights to the
+# store listing; it belongs in EAS (eas credentials), never in this repo.
+# Google downloads them as pc-api-<numbers>-<hash>.json by default.
+*service-account*.json
+pc-api-*.json
 
 # Smoke test output (scripts/smoke-bundle.mjs)
 .smoke/
