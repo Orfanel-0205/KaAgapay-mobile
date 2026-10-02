@@ -31,7 +31,13 @@ import { useRouter } from "expo-router";
 import { AxiosError } from "axios";
 
 import apiClient from "../../services/api/client";
-import { useLogin } from "../../hooks/useAuth";
+import {
+  readSignInChallenge,
+  resendLoginCode,
+  useLogin,
+  useVerifyLoginCode,
+} from "../../hooks/useAuth";
+import type { SignInChallenge } from "../../hooks/useAuth";
 import { useAuthStore } from "../../store/useAuthStore";
 import type { User } from "../../store/useAuthStore";
 import { useBiometrics } from "../../hooks/useBiometrics";
@@ -46,6 +52,76 @@ export default function LoginScreen() {
 
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+
+  // ─────────────────────────────────────────────
+  // Sign-in code, after a wrong password
+  // ─────────────────────────────────────────────
+  //
+  // If this account has had a wrong password since its last sign-in, the
+  // right password is answered with a code texted to the account holder's
+  // phone instead of a session. Someone who knows the password still needs
+  // the phone.
+
+  const { mutate: verifyCode, isPending: verifying } = useVerifyLoginCode();
+  const [codeStep, setCodeStep] = useState<SignInChallenge | null>(null);
+  const [code, setCode] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+
+  useEffect(() => {
+    if (!codeStep || resendIn <= 0) return;
+
+    const timer = setTimeout(() => setResendIn((n) => n - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [codeStep, resendIn]);
+
+  /** What happens once the sign-in is proven, by password or by code. */
+  const finishSignIn = async (method: string) => {
+    await logActivity("LOGIN", { method });
+    router.replace("/(tabs)/home");
+  };
+
+  const backToPassword = () => {
+    setCodeStep(null);
+    setCode("");
+  };
+
+  const handleVerifyCode = () => {
+    if (!codeStep || code.length !== 6) return;
+
+    verifyCode(
+      { challenge: codeStep.challenge, code },
+      {
+        onSuccess: () => finishSignIn("mobile_password+sms_code"),
+        onError: (err) => {
+          const data = (err as AxiosError<any>).response?.data;
+          setCode("");
+
+          if (data?.restart) {
+            backToPassword();
+            Alert.alert("Mag-sign in ulit", data?.message ?? "Nag-expire na ang code. Mag-sign in ulit para sa bago.");
+          } else {
+            Alert.alert("Mali ang code", data?.message ?? "Subukan ulit.");
+          }
+        },
+      }
+    );
+  };
+
+  const handleResendCode = async () => {
+    if (!codeStep || resendIn > 0) return;
+
+    try {
+      const sent = await resendLoginCode(codeStep.challenge);
+      setResendIn(sent.resendAfter);
+      setCode("");
+      Alert.alert("Bagong code", sent.message);
+    } catch (err) {
+      const data = (err as AxiosError<any>).response?.data;
+
+      if (data?.restart) backToPassword();
+      Alert.alert("Hindi naipadala", data?.message ?? "Hindi naipadala ang bagong code. Subukan ulit mamaya.");
+    }
+  };
 
   // ─────────────────────────────────────────────
   // Biometrics
@@ -101,6 +177,7 @@ export default function LoginScreen() {
       },
       {
         onSuccess: async () => {
+          setPassword("");
           const { token, user } = useAuthStore.getState();
 
           console.log(
@@ -115,6 +192,17 @@ export default function LoginScreen() {
         },
 
         onError: (err) => {
+          // Not a refusal: the password was right and a code is on its way.
+          const challenge = readSignInChallenge(err);
+
+          if (challenge) {
+            setPassword("");
+            setCode("");
+            setCodeStep(challenge);
+            setResendIn(challenge.resendAfter);
+            return;
+          }
+
           const axiosErr = err as AxiosError<ApiError>;
           const data = axiosErr.response?.data;
 
@@ -226,6 +314,69 @@ export default function LoginScreen() {
           </Text>
         </View>
 
+        {codeStep ? (
+          <View className="px-6 pt-8">
+            <Text className="text-xl font-bold mb-2">Ilagay ang code</Text>
+
+            <Text className="text-sm text-gray-600 mb-4 leading-5">
+              May maling password na nailagay sa account na ito mula noong huling
+              sign-in, kaya nagpadala kami ng 6-digit code sa numerong nagtatapos sa{" "}
+              <Text className="font-bold">{codeStep.maskedMobile}</Text>. Mag-e-expire
+              ito sa loob ng 5 minuto.
+            </Text>
+
+            <TextInput
+              placeholder="6-digit code"
+              className="border border-gray-200 bg-gray-50 rounded-xl px-4 py-3 text-lg text-gray-800 mb-4 tracking-widest"
+              value={code}
+              onChangeText={(text) => setCode(text.replace(/\D/g, "").slice(0, 6))}
+              keyboardType="number-pad"
+              // Lets iOS and Android offer the code straight from the text.
+              textContentType="oneTimeCode"
+              autoComplete="sms-otp"
+              maxLength={6}
+              autoFocus
+            />
+
+            <TouchableOpacity
+              onPress={handleVerifyCode}
+              disabled={verifying || code.length !== 6}
+              className={`rounded-xl py-4 items-center ${
+                verifying || code.length !== 6 ? "bg-teal-300" : "bg-teal-600"
+              }`}
+            >
+              {verifying ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text className="text-white font-bold">I-verify at Mag-sign in</Text>
+              )}
+            </TouchableOpacity>
+
+            <View className="flex-row justify-between mt-4">
+              <TouchableOpacity onPress={handleResendCode} disabled={resendIn > 0}>
+                <Text
+                  className={`text-sm font-semibold ${
+                    resendIn > 0 ? "text-gray-400" : "text-teal-600"
+                  }`}
+                >
+                  {resendIn > 0
+                    ? `Bagong code sa ${resendIn}s`
+                    : "Magpadala ng bagong code"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={backToPassword}>
+                <Text className="text-sm font-semibold text-teal-600">Bumalik</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text className="text-xs text-gray-500 mt-6 leading-5">
+              Nawala ang phone mo o mali ang numero? Pumunta sa RHU para ma-reset ang
+              password mo; matatanggal din ang hakbang na ito.
+            </Text>
+          </View>
+        ) : (
+        <>
         {/* FORM */}
         <View className="px-6 pt-8">
           <Text className="text-xl font-bold mb-4">Mag-sign in</Text>
@@ -296,6 +447,8 @@ export default function LoginScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+        </>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );

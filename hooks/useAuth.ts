@@ -63,6 +63,66 @@ export function useLogin() {
     },
   });
 }
+// ── Sign-in code, after a wrong password ──────────────────────────────────
+//
+// When an account has had a wrong password since its last sign-in, the server
+// answers the RIGHT password with HTTP 403 and code_required, and texts a
+// six-digit code to the account holder's phone. Someone who knows or guesses
+// the password still needs the phone.
+//
+// It is a 403 rather than a 200 on purpose: builds of this app from before the
+// code screen existed treat any 200 from /login as a finished sign-in and
+// would store an empty token. As a 403 they show the server's message instead.
+
+export interface SignInChallenge {
+  challenge: string;
+  /** The last three digits of the number the code went to. */
+  maskedMobile: string;
+  expiresIn: number;
+  resendAfter: number;
+}
+
+/** The code step hidden inside a login error, or null for a real refusal. */
+export function readSignInChallenge(error: unknown): SignInChallenge | null {
+  const response = (error as AxiosError<any>)?.response;
+  const data = response?.data;
+
+  if (response?.status !== 403 || !data?.code_required || !data?.challenge) {
+    return null;
+  }
+
+  return {
+    challenge: String(data.challenge),
+    maskedMobile: String(data.masked_mobile ?? ""),
+    expiresIn: Number(data.expires_in ?? 300),
+    resendAfter: Number(data.resend_after ?? 60),
+  };
+}
+
+export function useVerifyLoginCode() {
+  const setAuth = useAuthStore((s) => s.setAuth);
+
+  return useMutation<AuthApiResponse, AxiosError, { challenge: string; code: string }>({
+    mutationFn: async (payload) => {
+      const res = await apiClient.post<AuthApiResponse>("/login/verify-code", payload);
+      return res.data;
+    },
+    onSuccess: ({ user, token }) => {
+      setAuth(user, token);
+    },
+  });
+}
+
+/** Ask for a new code. Resolves with the server's message and the next wait. */
+export async function resendLoginCode(challenge: string): Promise<{ message: string; resendAfter: number }> {
+  const res = await apiClient.post("/login/resend-code", { challenge });
+
+  return {
+    message: String(res.data?.message ?? "Nagpadala kami ng bagong code."),
+    resendAfter: Number(res.data?.resend_after ?? 60),
+  };
+}
+
 // ── Register ──────────────────────────────────────────────────────────────
 
 export function useRegister() {
