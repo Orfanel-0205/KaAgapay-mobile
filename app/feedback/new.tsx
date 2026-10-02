@@ -5,10 +5,7 @@
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
+  Alert,  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -23,6 +20,7 @@ import {
   type MedicationTaken,
   type UrgencyLevel,
 } from "../../services/api/feedback";
+import KeyboardSafeView from "../../Components/KeyboardSafeView";
 
 function firstParam(value?: string | string[]): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -238,10 +236,13 @@ export default function HealthFollowupScreen() {
         </Text>
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      {/*
+          The keyboard covered the lower fields on Android. This used
+          KeyboardAvoidingView with no behaviour on Android, relying on the
+          window resizing itself -- which edge-to-edge, permanent since Expo
+          SDK 54, stopped happening. See Components/KeyboardSafeView.
+      */}
+      <KeyboardSafeView>
         <ScrollView
           contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
           keyboardShouldPersistTaps="handled"
@@ -395,7 +396,7 @@ export default function HealthFollowupScreen() {
             )}
           </TouchableOpacity>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </View>
   );
 }

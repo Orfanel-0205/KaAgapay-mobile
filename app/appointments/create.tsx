@@ -15,9 +15,7 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
+  Alert,  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -42,6 +40,7 @@ import {
   type ProfileCompletion,
 } from "../../utils/profileCompletion";
 import { tr, useLang } from "../../constants/i18n";
+import KeyboardSafeView from "../../Components/KeyboardSafeView";
 
 function pad2(n: number) {
   return n < 10 ? "0" + n : String(n);
@@ -463,10 +462,13 @@ export default function CreateAppointmentScreen() {
         subtitle={tr("create_appt_subtitle", lang)}
       />
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      {/*
+          The keyboard covered the lower fields on Android. This used
+          KeyboardAvoidingView with no behaviour on Android, relying on the
+          window resizing itself -- which edge-to-edge, permanent since Expo
+          SDK 54, stopped happening. See Components/KeyboardSafeView.
+      */}
+      <KeyboardSafeView>
         <ScrollView
           contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
           keyboardShouldPersistTaps="handled"
@@ -791,7 +793,7 @@ export default function CreateAppointmentScreen() {
             )}
           </TouchableOpacity>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </View>
   );
 }
