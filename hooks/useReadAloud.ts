@@ -14,6 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Speech from "expo-speech";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import type { Lang } from "../store/useLanguageStore";
 
@@ -131,4 +132,41 @@ export function useReadAloud(lang: Lang) {
   }, [lang, stop]);
 
   return { speakingId, toggle, stop };
+}
+
+// ── Auto speak ────────────────────────────────────────────────────────────
+//
+// For a resident who would tap the speaker on every reply anyway: each new
+// reply is read out as it arrives. Off by default -- a phone that starts
+// talking about symptoms in a waiting room or a jeepney is a privacy problem,
+// so it is something the resident turns on, not something they discover.
+//
+// Remembered on this phone. Storage can fail (or be cleared); the switch then
+// simply starts off again, which is the safe side.
+
+const AUTO_SPEAK_KEY = "kaagapay.chatbot.autoSpeak";
+
+export function useAutoSpeak() {
+  const [autoSpeak, setAutoSpeakState] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    AsyncStorage.getItem(AUTO_SPEAK_KEY)
+      .then((value) => {
+        if (alive && value === "on") setAutoSpeakState(true);
+      })
+      .catch(() => {});
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const setAutoSpeak = useCallback((on: boolean) => {
+    setAutoSpeakState(on);
+    AsyncStorage.setItem(AUTO_SPEAK_KEY, on ? "on" : "off").catch(() => {});
+  }, []);
+
+  return { autoSpeak, setAutoSpeak };
 }

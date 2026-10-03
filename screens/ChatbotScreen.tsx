@@ -45,7 +45,7 @@ import {
 import { useLanguageStore, type Lang } from "../store/useLanguageStore";
 import * as ImagePicker from "expo-image-picker";
 import { useVoiceNote } from "../hooks/useVoiceNote";
-import { useReadAloud } from "../hooks/useReadAloud";
+import { useAutoSpeak, useReadAloud } from "../hooks/useReadAloud";
 import {
   forgetAllChatImages,
   forgetChatImages,
@@ -170,6 +170,31 @@ const TEXTS: Record<string, Record<Lang, string>> = {
     en: "Photo sent",
     tl: "Naipadala ang larawan",
     pag: "Niibaki so litrato",
+  },
+  photo_placeholder: {
+    en: "Ask about this photo (optional)...",
+    tl: "Itanong tungkol sa larawan (opsyonal)...",
+    pag: "Itepet ed litrato (no labay mo)...",
+  },
+  remove_photo: {
+    en: "Remove photo",
+    tl: "Alisin ang larawan",
+    pag: "Ekalen so litrato",
+  },
+  auto_speak_on: {
+    en: "Auto speak is on. New replies will be read aloud.",
+    tl: "Naka-on ang auto speak. Babasahin nang malakas ang mga bagong sagot.",
+    pag: "Naka-on so auto speak. Basaen ya maksil so saray balon ebat.",
+  },
+  auto_speak_off: {
+    en: "Auto speak is off.",
+    tl: "Naka-off ang auto speak.",
+    pag: "Naka-off so auto speak.",
+  },
+  auto_speak_label: {
+    en: "Auto speak",
+    tl: "Auto speak",
+    pag: "Auto speak",
   },
   recording: {
     en: "Recording... tap to send",
@@ -837,6 +862,7 @@ export default function ChatbotScreen() {
     setCurrentSessionId(null);
     setMessages([createWelcomeMessage(lang)]);
     setInput("");
+    setPendingPhoto(null);
     setTutorialCards([]);
     setSuggestedAction(null);
     setHistoryVisible(false);
@@ -852,6 +878,8 @@ export default function ChatbotScreen() {
       const response = await fetchMobileChatMessages(session.id);
 
       setCurrentSessionId(session.id);
+      // A photo picked for the other chat does not belong in this one.
+      setPendingPhoto(null);
       setMessages(
         response.messages.length > 0
           ? response.messages
@@ -918,9 +946,38 @@ export default function ChatbotScreen() {
 
   const voice = useVoiceNote();
   const speech = useReadAloud(lang);
+  const { autoSpeak, setAutoSpeak } = useAutoSpeak();
+
+  // Read when the reply lands, not when it was asked: switching it off while
+  // Dr. Quack is still typing has to keep that reply quiet.
+  const autoSpeakRef = useRef(autoSpeak);
+  autoSpeakRef.current = autoSpeak;
+
+  const toggleAutoSpeak = () => {
+    const next = !autoSpeak;
+
+    setAutoSpeak(next);
+
+    // Switching it off mid-reply means "be quiet now", not "from the next one".
+    if (!next) speech.stop();
+
+    Alert.alert(
+      t("auto_speak_label", lang),
+      t(next ? "auto_speak_on" : "auto_speak_off", lang)
+    );
+  };
 
   // Message id -> the copy of the photo kept on this phone.
   const [sentImages, setSentImages] = useState<Record<string, string>>({});
+
+  /*
+   * A picked photo waits in the composer until Send.
+   *
+   * Sending it the moment it was picked left no room to say what it is or
+   * what to ask -- "is this rash from the heat?" gets a far better answer
+   * than a bare photo. Typing stays optional: Send works with the photo alone.
+   */
+  const [pendingPhoto, setPendingPhoto] = useState<ChatAttachment | null>(null);
 
   /*
    * Speaking the question instead of typing it.
@@ -999,14 +1056,23 @@ export default function ChatbotScreen() {
 
     const asset = result.assets[0];
 
-    await sendMessage(input.trim(), {
+    // Picking again replaces the photo; one per message.
+    setPendingPhoto({
       uri: asset.uri,
       mime: asset.mimeType ?? "image/jpeg",
       name: asset.fileName ?? `photo-${Date.now()}.jpg`,
     });
-
-    setInput("");
   };
+
+  // What the Send button sends: the typed text and the waiting photo, if any.
+  const sendFromComposer = () => {
+    const photo = pendingPhoto;
+
+    setPendingPhoto(null);
+    void sendMessage(undefined, photo);
+  };
+
+  const canSendFromComposer = !sending && (input.trim().length > 0 || pendingPhoto !== null);
 
   const sendMessage = async (
     manualText?: string,
@@ -1074,6 +1140,11 @@ export default function ChatbotScreen() {
       speech.stop();
 
       setMessages((previous) => [...previous, response.message]);
+
+      if (autoSpeakRef.current) {
+        speech.toggle(response.message.id, response.message.content);
+      }
+
       setTutorialCards(response.tutorial_cards ?? []);
       setSuggestedAction(response.suggested_action ?? null);
 
@@ -1157,6 +1228,25 @@ export default function ChatbotScreen() {
                 : t("new_chat", lang)}
             </Text>
           </View>
+
+          <TouchableOpacity
+            onPress={toggleAutoSpeak}
+            style={[
+              styles.headerButton,
+              styles.autoSpeakButton,
+              autoSpeak ? styles.autoSpeakButtonOn : null,
+            ]}
+            activeOpacity={0.8}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: autoSpeak }}
+            accessibilityLabel={t("auto_speak_label", lang)}
+          >
+            <Ionicons
+              name={autoSpeak ? "volume-high" : "volume-mute-outline"}
+              size={adaptive.size(22)}
+              color={autoSpeak ? "#FFFFFF" : TEXT}
+            />
+          </TouchableOpacity>
 
           <TouchableOpacity
             onPress={startNewChat}
@@ -1253,6 +1343,29 @@ export default function ChatbotScreen() {
               },
             ]}
           >
+            {pendingPhoto && !voice.isRecording ? (
+              <View style={styles.pendingPhotoRow}>
+                <View style={styles.pendingPhotoFrame}>
+                  <Image
+                    source={{ uri: pendingPhoto.uri }}
+                    style={styles.pendingPhoto}
+                    resizeMode="cover"
+                  />
+
+                  <TouchableOpacity
+                    onPress={() => setPendingPhoto(null)}
+                    disabled={sending}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={styles.pendingPhotoRemove}
+                    accessibilityLabel={t("remove_photo", lang)}
+                  >
+                    <Ionicons name="close" size={adaptive.size(14)} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+
+            <View style={styles.inputRow}>
             {/*
                 While recording, the text field is replaced by the elapsed
                 time. Leaving it in place invites typing into a box whose
@@ -1288,7 +1401,7 @@ export default function ChatbotScreen() {
                 <TextInput
                   value={input}
                   onChangeText={setInput}
-                  placeholder={t("placeholder", lang)}
+                  placeholder={t(pendingPhoto ? "photo_placeholder" : "placeholder", lang)}
                   placeholderTextColor={FAINT}
                   style={styles.input}
                   multiline
@@ -1300,9 +1413,10 @@ export default function ChatbotScreen() {
             {/*
                 The mic replaces Send only while there is nothing typed.
                 Someone who has written a question wants to send it, not to
-                discover the button has become a microphone.
+                discover the button has become a microphone. The same goes
+                for a photo waiting to be sent.
             */}
-            {!input.trim() && !sending ? (
+            {!input.trim() && !pendingPhoto && !sending ? (
               <TouchableOpacity
                 onPress={onMicPress}
                 activeOpacity={0.85}
@@ -1321,14 +1435,14 @@ export default function ChatbotScreen() {
             ) : null}
 
             <TouchableOpacity
-              onPress={() => sendMessage()}
-              disabled={sending || !input.trim()}
+              onPress={sendFromComposer}
+              disabled={!canSendFromComposer}
               activeOpacity={0.85}
               style={[
                 styles.sendButton,
-                sending || !input.trim() ? styles.sendButtonDisabled : null,
+                !canSendFromComposer ? styles.sendButtonDisabled : null,
                 // Hidden while the mic occupies this slot.
-                !input.trim() && !sending ? styles.hidden : null,
+                !input.trim() && !pendingPhoto && !sending ? styles.hidden : null,
               ]}
             >
               {sending ? (
@@ -1341,6 +1455,7 @@ export default function ChatbotScreen() {
                 />
               )}
             </TouchableOpacity>
+            </View>
           </View>
         </KeyboardAvoidingView>
       )}
@@ -1389,6 +1504,13 @@ const makeStyles = (adaptive: ReturnType<typeof useAdaptive>) =>
       backgroundColor: "#F1F5F9",
       alignItems: "center",
       justifyContent: "center",
+    },
+    autoSpeakButton: {
+      marginRight: adaptive.size(8),
+    },
+    // Filled while on, so a glance tells whether the phone will talk.
+    autoSpeakButtonOn: {
+      backgroundColor: BRAND,
     },
     headerAvatar: {
       width: adaptive.size(42),
@@ -1600,13 +1722,44 @@ const makeStyles = (adaptive: ReturnType<typeof useAdaptive>) =>
       width: "100%",
       maxWidth: adaptive.maxWidth,
       alignSelf: "center",
-      flexDirection: "row",
-      alignItems: "flex-end",
       backgroundColor: CARD,
       borderTopWidth: 1,
       borderTopColor: "#F1F5F9",
       paddingHorizontal: adaptive.horizontal,
       paddingTop: adaptive.size(10),
+    },
+    inputRow: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+    },
+    pendingPhotoRow: {
+      flexDirection: "row",
+      marginBottom: adaptive.size(8),
+    },
+    pendingPhotoFrame: {
+      width: adaptive.size(72),
+      height: adaptive.size(72),
+    },
+    pendingPhoto: {
+      width: "100%",
+      height: "100%",
+      borderRadius: adaptive.size(14),
+      borderWidth: 1,
+      borderColor: BORDER,
+      backgroundColor: "#F1F5F9",
+    },
+    pendingPhotoRemove: {
+      position: "absolute",
+      top: -adaptive.size(6),
+      right: -adaptive.size(6),
+      width: adaptive.size(22),
+      height: adaptive.size(22),
+      borderRadius: 999,
+      backgroundColor: "#0F172A",
+      borderWidth: 2,
+      borderColor: CARD,
+      alignItems: "center",
+      justifyContent: "center",
     },
     input: {
       flex: 1,
