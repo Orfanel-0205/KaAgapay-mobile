@@ -194,7 +194,22 @@ export default function ForgotPasswordScreen() {
           <View className="px-6 pt-8">
             <Text className="text-xl font-bold mb-2">Ilagay ang code at bagong password</Text>
 
-            {notice ? <Text className="text-sm text-gray-600 mb-4 leading-5">{notice}</Text> : null}
+            {notice ? <Text className="text-sm text-gray-600 mb-3 leading-5">{notice}</Text> : null}
+
+            {/*
+                What was typed, shown back. The reply is the same whether or
+                not an account matched, so a mistyped or old number would
+                otherwise just mean a code that never comes, with no clue
+                why. Repeating the resident's own input reveals nothing.
+            */}
+            <View className="flex-row flex-wrap items-center mb-4">
+              <Text className="text-sm text-gray-700">
+                Para sa: <Text className="font-bold">{login.trim()}</Text>{"  "}
+              </Text>
+              <TouchableOpacity onPress={startOver}>
+                <Text className="text-sm font-semibold text-teal-600 underline">Palitan</Text>
+              </TouchableOpacity>
+            </View>
 
             <TextInput
               placeholder="6-digit code"
