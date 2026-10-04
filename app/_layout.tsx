@@ -6,6 +6,7 @@ import React from "react";
 import { View } from "react-native";
 import "../global.css";
 import { usePushNotifications } from "../hooks/usePushNotifications";
+import DuckOverlay from "../Components/DuckOverlay";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,6 +28,8 @@ export default function RootLayout() {
     <View style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
         <Slot />
+        {/* Doctor Quack for refusals, server errors and maintenance. */}
+        <DuckOverlay />
       </QueryClientProvider>
     </View>
   );

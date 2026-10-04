@@ -6,6 +6,7 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 import { ensureHydration, useAuthStore } from "../../store/useAuthStore";
+import { emitDuck } from "./duckBus";
 
 function cleanUrl(url: string): string {
   return url.trim().replace(/\/+$/, "");
@@ -19,6 +20,9 @@ const API_ORIGIN = cleanUrl(RAW_API_URL);
 const BASE_URL = API_ORIGIN.endsWith("/api/v1")
   ? API_ORIGIN
   : `${API_ORIGIN}/api/v1`;
+
+/** The API root, e.g. for the maintenance screen's health check. */
+export const API_BASE_URL = BASE_URL;
 
 function isExpectedSilentError(error: AxiosError<any>): boolean {
   const url = String(error.config?.url ?? "");
@@ -106,6 +110,26 @@ apiClient.interceptors.response.use(
         data: error.response?.data,
         message: error.message,
       });
+    }
+
+    // Doctor Quack (Components/DuckOverlay.tsx). Maintenance shows for every
+    // request; a refusal or a server failure only for something the signed-in
+    // resident just did -- not for background loads, and not on the sign-in
+    // screens, where a 403 means "pending approval" or "enter the code" and
+    // those screens explain it themselves.
+    const status = error.response?.status ?? 0;
+    const method = String(error.config?.method ?? "get").toLowerCase();
+    const isMutation = ["post", "put", "patch", "delete"].includes(method);
+    const signedIn = Boolean(error.config?.headers?.Authorization);
+
+    if (status === 503) {
+      emitDuck({ kind: "maintenance" });
+    } else if (!silent && isMutation && signedIn) {
+      if (status === 403 && !error.response?.data?.code_required) {
+        emitDuck({ kind: "forbidden", message: error.response?.data?.message });
+      } else if (status >= 500) {
+        emitDuck({ kind: "server_error" });
+      }
     }
 
     if (error.response?.status === 401) {
