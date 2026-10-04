@@ -371,7 +371,8 @@ export default function LoginScreen() {
             </View>
 
             <Text className="text-xs text-gray-500 mt-6 leading-5">
-              Nawala ang phone mo o mali ang numero? Pumunta sa RHU para ma-reset ang
+              Nawala ang phone mo o mali ang numero? Gamitin ang &quot;Nakalimutan ang
+              password?&quot; kung may email ang account mo, o pumunta sa RHU para ma-reset ang
               password mo; matatanggal din ang hakbang na ito.
             </Text>
           </View>
@@ -394,12 +395,21 @@ export default function LoginScreen() {
           <TextInput
             placeholder="Password"
             secureTextEntry
-            className="border border-gray-200 bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-800 mb-4"
+            className="border border-gray-200 bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-800 mb-2"
             value={password}
             onChangeText={setPassword}
             autoCapitalize="none"
             autoCorrect={false}
           />
+
+          <TouchableOpacity
+            onPress={() =>
+              router.push({ pathname: "/(auth)/forgot-password", params: { login: phone.trim() } })
+            }
+            className="self-end mb-4 py-1"
+          >
+            <Text className="text-teal-600 text-sm font-semibold">Nakalimutan ang password?</Text>
+          </TouchableOpacity>
 
           {/* LOGIN BUTTON */}
           <TouchableOpacity

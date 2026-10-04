@@ -123,6 +123,57 @@ export async function resendLoginCode(challenge: string): Promise<{ message: str
   };
 }
 
+// ── Forgot password ───────────────────────────────────────────────────────
+//
+// The resident types their mobile number or email; a six-digit code goes to
+// the account's number by SMS, and to its email if it has one. The code and a
+// new password together set the password.
+//
+// The server gives every request the same answer and a challenge, whether or
+// not an account matched, so nobody can use this screen to find out who is a
+// patient of the RHU. The screen just moves on to the code step.
+
+/** Ask for a reset code. Always resolves with a challenge. */
+export async function requestPasswordReset(
+  login: string
+): Promise<{ challenge: string; message: string; resendAfter: number }> {
+  const res = await apiClient.post("/forgot-password", { login });
+
+  return {
+    challenge: String(res.data?.challenge ?? ""),
+    message: String(res.data?.message ?? "Kung may account na tugma, nagpadala kami ng code."),
+    resendAfter: Number(res.data?.resend_after ?? 60),
+  };
+}
+
+export async function resetPassword(payload: {
+  challenge: string;
+  code: string;
+  password: string;
+  password_confirmation: string;
+}): Promise<string> {
+  const res = await apiClient.post("/reset-password", payload);
+
+  return String(res.data?.message ?? "Napalitan na ang password mo. Mag-sign in gamit ang bago.");
+}
+
+export async function resendResetCode(challenge: string): Promise<{ message: string; resendAfter: number }> {
+  const res = await apiClient.post("/forgot-password/resend", { challenge });
+
+  return {
+    message: String(res.data?.message ?? "Nagpadala kami ng bagong code."),
+    resendAfter: Number(res.data?.resend_after ?? 60),
+  };
+}
+
+/** The most useful line from a refused request: a field error beats the summary. */
+export function resetErrorMessage(error: unknown, fallback: string): string {
+  const data = (error as AxiosError<any>)?.response?.data;
+  const fieldErrors = Object.values((data?.errors ?? {}) as Record<string, string[]>).flat();
+
+  return String(fieldErrors[0] ?? data?.message ?? fallback);
+}
+
 // ── Register ──────────────────────────────────────────────────────────────
 
 export function useRegister() {
