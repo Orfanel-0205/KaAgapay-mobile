@@ -259,10 +259,8 @@ export default function LoginScreen() {
         biometric_token: storedToken,
       });
 
-      console.log("[BIO LOGIN SUCCESS]", {
-        user_id: res.data.user?.user_id,
-        token_prefix: res.data.token?.slice(0, 15),
-      });
+      // Never log the token, or any part of it: release builds keep this log.
+      console.log("[BIO LOGIN SUCCESS]", { user_id: res.data.user?.user_id });
 
       setAuth(res.data.user, res.data.token);
 

@@ -55,7 +55,6 @@ export function useLogin() {
       // ── DEBUG: confirm token shape before saving ──
       if (__DEV__) {
         console.log("[Login] user_id:", user?.user_id);
-        console.log("[Login] token prefix:", token?.slice(0, 15));
         if (!token) console.error("[Login] ❌ Token is null/undefined!");
         if (!user?.user_id) console.error("[Login] ❌ user_id missing from response!");
       }

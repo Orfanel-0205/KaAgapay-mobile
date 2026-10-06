@@ -2,9 +2,9 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { forgetAllChatImages } from "../services/chatImageStore";
+import { authStorage } from "./authStorage";
 
 export interface User {
   user_id: number;
@@ -126,7 +126,8 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "ka-agapay-auth",
-      storage: createJSONStorage(() => AsyncStorage),
+      // The token in SecureStore, the rest in AsyncStorage (store/authStorage.ts).
+      storage: createJSONStorage(() => authStorage),
       onRehydrateStorage: () => (state, error) => {
         if (error) {
           console.error("[AuthStore] Rehydration failed:", error);
