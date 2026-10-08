@@ -35,6 +35,9 @@ export interface MobileEventPost {
   location?: string | null;
   target_audience?: string | null;
 
+  /** "RHU 1": the RHU running it, shown as "Hosted by RHU 1". Null for every RHU. */
+  host_rhu_label?: string | null;
+
   tags?: string[];
 
   banner_url?: string | null;
@@ -112,6 +115,7 @@ function normalizeEvent(raw: any): MobileEventPost {
 
     location: raw.location ?? null,
     target_audience: raw.target_audience ?? null,
+    host_rhu_label: raw.host_rhu_label ?? null,
 
     tags: Array.isArray(raw.tags)
       ? raw.tags

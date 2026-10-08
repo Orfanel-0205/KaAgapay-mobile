@@ -223,6 +223,22 @@ hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 </View>
               )}
 
+              {/* Every RHU serves the whole town; this says who is running it. */}
+              {!!event.host_rhu_label && (
+                <View className="flex-row items-center mt-1">
+                  <Ionicons
+                    name="business-outline"
+                    size={20}
+                    color="#4B5563"
+                    style={{ marginRight: 5 }}
+                  />
+
+                  <Text className="text-gray-600 text-sm">
+                    Hosted by {event.host_rhu_label}
+                  </Text>
+                </View>
+              )}
+
               {event.is_registered && event.registration?.queue_number ? (
                 <View className="bg-green-50 rounded-xl px-3 py-2 mt-3 border border-green-100">
                   <Text className="text-green-700 text-xs font-bold">

@@ -356,6 +356,20 @@ right: 8,
         </View>
       )}
 
+      {/* Every RHU serves the whole town; this says who is running it. */}
+      {!!event.host_rhu_label && (
+        <View className="flex-row items-center mt-2">
+          <Ionicons
+            name="business-outline"
+            size={24}
+            color="#4B5563"
+            style={{ marginRight: 6 }}
+          />
+
+          <Text className="text-gray-600 text-sm">Hosted by {event.host_rhu_label}</Text>
+        </View>
+      )}
+
       {!!event.target_audience && (
         <View className="flex-row items-center mt-2">
           <Ionicons
