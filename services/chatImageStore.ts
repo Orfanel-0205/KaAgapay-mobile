@@ -85,6 +85,52 @@ export async function keepChatImage(
   }
 }
 
+/**
+ * File a photo under the server's id for its message, once that is known.
+ *
+ * While a message is being sent it has only a temporary id. Reopening the
+ * conversation later loads the server's ids, so a photo left under the
+ * temporary one was never found again and the bubble showed "[photo]"
+ * (Oct 2026). Returns the new path, or null if the move failed.
+ */
+export async function relinkChatImage(
+  fromMessageId: string,
+  toMessageId: string
+): Promise<string | null> {
+  try {
+    const from = `${DIRECTORY}${fromMessageId.replace(/[^A-Za-z0-9_-]/g, "")}.jpg`;
+    const to = `${DIRECTORY}${toMessageId.replace(/[^A-Za-z0-9_-]/g, "")}.jpg`;
+
+    await FileSystem.moveAsync({ from, to });
+
+    return to;
+  } catch {
+    return null;
+  }
+}
+
+/** The kept photos for these messages, by message id, in one directory read. */
+export async function keptChatImages(
+  messageIds: string[]
+): Promise<Record<string, string>> {
+  try {
+    const names = new Set(await FileSystem.readDirectoryAsync(DIRECTORY));
+    const found: Record<string, string> = {};
+
+    for (const id of messageIds) {
+      const file = `${id.replace(/[^A-Za-z0-9_-]/g, "")}.jpg`;
+
+      if (names.has(file)) {
+        found[id] = `${DIRECTORY}${file}`;
+      }
+    }
+
+    return found;
+  } catch {
+    return {};
+  }
+}
+
 /** Whether a kept image is still on disk, for a bubble about to render it. */
 export async function chatImageExists(uri: string): Promise<boolean> {
   try {

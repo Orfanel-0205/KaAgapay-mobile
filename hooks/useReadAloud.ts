@@ -42,9 +42,22 @@ const VOICE_BY_LANG: Record<Lang, string> = {
  * which derail a sentence. Bullets become pauses instead, which is what they
  * mean.
  */
+/**
+ * Abbreviations said letter by letter. Read as a word, "RHU" came out as
+ * "ru" -- residents heard "RHO" (Oct 2026). Spelled with full stops, every
+ * voice reads them as letters: "R. H. U.".
+ */
+const SPELLED_OUT = ["RHU", "MHO", "BHW", "OPD", "ER", "ID", "SMS", "OTP", "QR", "BP"];
+
+const SPELLED_PATTERN = new RegExp(`\\b(${SPELLED_OUT.join("|")})(s?)\\b`, "g");
+
 export function speakableText(raw: string): string {
   return (
     raw
+      // Abbreviations, letter by letter.
+      .replace(SPELLED_PATTERN, (_match, word: string, plural: string) =>
+        `${word.split("").join(". ")}.${plural ? "s" : ""}`
+      )
       // Emoji and pictographs.
       .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "")
       // Bullet markers at the start of a line become a pause.

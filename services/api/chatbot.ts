@@ -43,6 +43,8 @@ export interface ChatSessionSummary {
 export interface MobileChatResponse {
   message: ChatMessage;
   session_id: string;
+  /** The server's id for the question just sent; a kept photo is filed under it. */
+  user_message_id?: string;
   audience?: "resident" | "staff";
   intent?: string;
   detected_complaint?: string | null;
@@ -205,6 +207,9 @@ export async function sendMobileChatMessage(params: {
       ...uploaded.data,
       message: normalizeMessage(uploaded.data.message),
       session_id: String(uploaded.data.session_id ?? ""),
+      user_message_id: (uploaded.data as any).user_message?.id
+        ? String((uploaded.data as any).user_message.id)
+        : undefined,
     };
   }
 

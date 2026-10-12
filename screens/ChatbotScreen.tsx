@@ -50,7 +50,11 @@ import {
   forgetAllChatImages,
   forgetChatImages,
   keepChatImage,
+  keptChatImages,
+  relinkChatImage,
 } from "../services/chatImageStore";
+import { prepareChatPhoto } from "../services/chatPhoto";
+import { richTextRuns } from "../utils/richText";
 import type { ChatAttachment } from "../services/api/chatbot";
 
 const CHATBOT_ICON = require("../assets/chatbotdoctorquack.png");
@@ -453,7 +457,17 @@ function MessageBubble({
         >
           {imageUri && /^\[.*\]$/.test(item.content.trim())
             ? t("photo_sent", lang)
-            : item.content}
+            : isUser
+              ? item.content
+              : richTextRuns(item.content).map((run, index) =>
+                  run.bold ? (
+                    <Text key={index} style={{ fontWeight: "700" }}>
+                      {run.text}
+                    </Text>
+                  ) : (
+                    run.text
+                  )
+                )}
         </Text>
 
         <View style={styles.bubbleFooter}>
@@ -885,6 +899,13 @@ export default function ChatbotScreen() {
           ? response.messages
           : [createWelcomeMessage(lang)]
       );
+      // The photos this person sent in that chat, kept on this phone under
+      // the server's message ids (relinkChatImage).
+      setSentImages(
+        await keptChatImages(
+          response.messages.filter((message) => message.role === "user").map((message) => message.id)
+        )
+      );
       setTutorialCards([]);
       setSuggestedAction(null);
     } catch (error) {
@@ -1054,14 +1075,12 @@ export default function ChatbotScreen() {
 
     if (result.canceled || !result.assets?.length) return;
 
-    const asset = result.assets[0];
+    // Made small on the phone (services/chatPhoto): a full camera photo is a
+    // slow upload on mobile data and was timing out the assistant.
+    const photo = await prepareChatPhoto(result.assets[0]);
 
     // Picking again replaces the photo; one per message.
-    setPendingPhoto({
-      uri: asset.uri,
-      mime: asset.mimeType ?? "image/jpeg",
-      name: asset.fileName ?? `photo-${Date.now()}.jpg`,
-    });
+    setPendingPhoto(photo);
   };
 
   // What the Send button sends: the typed text and the waiting photo, if any.
@@ -1134,6 +1153,16 @@ export default function ChatbotScreen() {
 
       if (response.session_id) {
         setCurrentSessionId(response.session_id);
+      }
+
+      // Re-file the kept photo under the server's id, so reopening this chat
+      // later still shows it (it used to come back as "[photo]").
+      const serverId = response.user_message_id;
+      if (serverId && attachment && !attachment.mime.startsWith("audio/")) {
+        const moved = await relinkChatImage(localId, serverId);
+        if (moved) {
+          setSentImages((previous) => ({ ...previous, [localId]: moved, [serverId]: moved }));
+        }
       }
 
       // Whatever was being read belongs to the previous answer.
