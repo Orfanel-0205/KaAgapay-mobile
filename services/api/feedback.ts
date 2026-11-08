@@ -2,6 +2,7 @@
 // Resident feedback API helper (PHASE 5).
 
 import apiClient from "./client";
+import { sendOrQueue } from "../offlineOutbox";
 
 export type FeedbackServiceType =
   | "health_followup"
@@ -69,6 +70,23 @@ function extractArray(payload: any): ServiceFeedback[] {
 export async function submitFeedback(
   payload: SubmitFeedbackPayload
 ): Promise<ServiceFeedback> {
+  const res = await apiClient.post("/feedback", feedbackRequestBody(payload));
+
+  return res.data?.data ?? res.data;
+}
+
+/** Send now, or keep it on the phone until there is signal (services/offlineOutbox). */
+export async function submitFeedbackOrQueue(payload: SubmitFeedbackPayload): Promise<{ queued: boolean }> {
+  const result = await sendOrQueue({
+    method: "post",
+    url: "/feedback",
+    data: feedbackRequestBody(payload),
+    label: "Health follow-up",
+  });
+  return { queued: result.queued };
+}
+
+function feedbackRequestBody(payload: SubmitFeedbackPayload): Record<string, any> {
   const body: Record<string, any> = {
     service_type: payload.service_type ?? "health_followup",
     followup_type: payload.followup_type ?? "medical_followup",
@@ -107,9 +125,7 @@ export async function submitFeedback(
   if (payload.consultation_id) body.consultation_id = payload.consultation_id;
   if (payload.queue_ticket_id) body.queue_ticket_id = payload.queue_ticket_id;
 
-  const res = await apiClient.post("/feedback", body);
-
-  return res.data?.data ?? res.data;
+  return body;
 }
 
 /**

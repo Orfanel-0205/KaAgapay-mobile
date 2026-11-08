@@ -21,9 +21,10 @@ useQueryClient,
 } from "@tanstack/react-query";
 import {
 fetchPublishedEventById,
-registerForEvent,
+registerForEventOrQueue,
 cancelEventRegistration,
 } from "../../services/api/events";
+import { tr, useLang } from "../../constants/i18n";
 
 function formatLongDate(value?: string | null) {
 if (!value) return null;
@@ -64,6 +65,7 @@ minute: "2-digit",
 export default function EventDetailsScreen() {
 const router = useRouter();
 const queryClient = useQueryClient();
+const lang = useLang();
 
 const params = useLocalSearchParams<{
 id: string;
@@ -85,8 +87,14 @@ retry: false,
 });
 
 const registerMutation = useMutation({
-mutationFn: () => registerForEvent(eventId),
-onSuccess: async () => {
+mutationFn: () => registerForEventOrQueue(eventId, event?.title ?? `#${eventId}`),
+onSuccess: async (result) => {
+// No internet: kept on the phone and sent when the signal returns.
+if (result.queued) {
+  Alert.alert(tr("outbox_kept_title", lang), tr("outbox_kept_message", lang));
+  return;
+}
+
 await queryClient.invalidateQueries({
 queryKey: ["published-event", eventId],
 });

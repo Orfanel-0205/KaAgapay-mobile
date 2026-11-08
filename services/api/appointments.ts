@@ -1,6 +1,7 @@
 // services/api/appointments.ts
 
 import apiClient from "./client";
+import { keepForLater, type OutboxItem } from "../offlineOutbox";
 
 export type AppointmentStatus =
   | "pending"
@@ -164,9 +165,8 @@ export async function fetchAppointment(
   }
 }
 
-export async function createAppointment(
-  payload: CreateAppointmentPayload
-): Promise<Appointment> {
+/** The request body for a booking, shared by sending now and keeping it for later. */
+export function appointmentRequestBody(payload: CreateAppointmentPayload): Record<string, any> {
   const reason = payload.reason.trim();
   const symptoms = payload.symptoms?.trim() || "";
   const normalizedTime = normalizeTime(payload.preferred_time);
@@ -200,9 +200,35 @@ export async function createAppointment(
     body.rhu_id = payload.rhu_id;
   }
 
-  const res = await apiClient.post("/appointments", body);
+  return body;
+}
+
+export async function createAppointment(
+  payload: CreateAppointmentPayload
+): Promise<Appointment> {
+  const res = await apiClient.post("/appointments", appointmentRequestBody(payload));
 
   return extractAppointment(res.data);
+}
+
+/**
+ * Keep a booking on the phone when there is no internet: the health profile
+ * update first, then the booking, sent in that order when the signal returns
+ * (services/offlineOutbox). The RHU still approves it as usual.
+ */
+export async function keepBookingForLater(
+  payload: CreateAppointmentPayload,
+  profilePatch: Record<string, unknown> | null
+): Promise<OutboxItem> {
+  if (profilePatch) {
+    await keepForLater({ method: "patch", url: "/profile", data: profilePatch, label: "Health profile" });
+  }
+  return keepForLater({
+    method: "post",
+    url: "/appointments",
+    data: appointmentRequestBody(payload),
+    label: `Booking: ${payload.preferred_date}`,
+  });
 }
 
 export async function cancelAppointment(

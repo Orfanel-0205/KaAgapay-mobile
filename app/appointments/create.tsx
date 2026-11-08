@@ -26,8 +26,10 @@ import DateTimePicker, {
 import ScreenHeader from "../../Components/ScreenHeader";
 import {
   createAppointment,
+  keepBookingForLater,
   type ConsultationType,
 } from "../../services/api/appointments";
+import { isConnectionFailure } from "../../services/offlineOutbox";
 import { getProfile, updateProfile } from "../../services/api/profile";
 import {
   FALLBACK_RHUS,
@@ -338,10 +340,38 @@ export default function CreateAppointmentScreen() {
 
     setSubmitting(true);
 
+    const appointmentPayload = {
+      consultation_type: consultationType,
+      rhu_id: rhuId,
+      reason: reason.trim(),
+      preferred_date: formatDate(consultationDate),
+      preferred_time: formatTime(preferredTime),
+    };
+
+    // No internet: keep the booking on the phone and send it when the signal
+    // returns (services/offlineOutbox) -- but only for a profile the RHU's
+    // server already found complete, since that cannot be checked offline.
+    const keepOffline = async (profilePatch: Record<string, unknown> | null) => {
+      if (profilePatch && !completion?.can_book_consultation) {
+        setSubmitting(false);
+        Alert.alert(tr("outbox_kept_title", lang), tr("outbox_profile_needs_internet", lang));
+        return;
+      }
+      try {
+        await keepBookingForLater(appointmentPayload, profilePatch);
+        Alert.alert(tr("outbox_kept_title", lang), tr("outbox_kept_message", lang), [
+          { text: "OK", onPress: () => router.back() },
+        ]);
+      } catch (keepError: any) {
+        Alert.alert("Error", keepError?.message || "Failed to create appointment.");
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
     // 1) Save ITR profile fields FIRST. This is mandatory now: if the profile
     //    cannot be saved, we must NOT create an appointment with an incomplete ITR.
-    try {
-      const updated: any = await updateProfile({
+    const profilePatch = {
         first_name: firstName.trim() || null,
         middle_name: middleName.trim() || null,
         last_name: lastName.trim() || null,
@@ -372,7 +402,10 @@ export default function CreateAppointmentScreen() {
               menopausal_age: menopausalAge.trim() || null,
             }
           : {}),
-      });
+    };
+
+    try {
+      const updated: any = await updateProfile(profilePatch);
 
       // 2) Re-check completion from the authoritative saved profile. Some required
       //    ITR fields (e.g. Mobile Number, Barangay) live on the account and are
@@ -391,6 +424,10 @@ export default function CreateAppointmentScreen() {
         return;
       }
     } catch (error: any) {
+      if (isConnectionFailure(error)) {
+        await keepOffline(profilePatch);
+        return;
+      }
       setSubmitting(false);
       Alert.alert(
         "Profile not saved",
@@ -407,13 +444,7 @@ export default function CreateAppointmentScreen() {
 
     // 3) Profile is saved and complete — create the appointment.
     try {
-      const appointment = await createAppointment({
-        consultation_type: consultationType,
-        rhu_id: rhuId,
-        reason: reason.trim(),
-        preferred_date: formatDate(consultationDate),
-        preferred_time: formatTime(preferredTime),
-      });
+      const appointment = await createAppointment(appointmentPayload);
 
       Alert.alert(
         "Appointment request sent",
@@ -427,6 +458,11 @@ export default function CreateAppointmentScreen() {
         ]
       );
     } catch (error: any) {
+      if (isConnectionFailure(error)) {
+        // The profile was saved; only the booking is kept.
+        await keepOffline(null);
+        return;
+      }
       Alert.alert(
         "Error",
         error?.response?.data?.message ||

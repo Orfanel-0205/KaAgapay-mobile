@@ -7,6 +7,7 @@ import { View } from "react-native";
 import "../global.css";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import DuckOverlay from "../Components/DuckOverlay";
+import OfflineBanner from "../Components/OfflineBanner";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +29,8 @@ export default function RootLayout() {
     <View style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
         <Slot />
+        {/* No internet, and what is waiting to be sent (services/offlineOutbox). */}
+        <OfflineBanner />
         {/* Doctor Quack for refusals, server errors and maintenance. */}
         <DuckOverlay />
       </QueryClientProvider>

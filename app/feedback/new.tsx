@@ -15,12 +15,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
-  submitFeedback,
+  submitFeedbackOrQueue,
   type ConditionStatus,
   type MedicationTaken,
   type UrgencyLevel,
 } from "../../services/api/feedback";
 import KeyboardSafeView from "../../Components/KeyboardSafeView";
+import { tr, useLang } from "../../constants/i18n";
 
 function firstParam(value?: string | string[]): string {
   if (Array.isArray(value)) return value[0] ?? "";
@@ -115,6 +116,7 @@ function QuestionTitle({ children }: { children: React.ReactNode }) {
 
 export default function HealthFollowupScreen() {
   const router = useRouter();
+  const lang = useLang();
 
   const params = useLocalSearchParams<{
     consultation_id?: string | string[];
@@ -155,7 +157,7 @@ export default function HealthFollowupScreen() {
     setSubmitting(true);
 
     try {
-      await submitFeedback({
+      const result = await submitFeedbackOrQueue({
         service_type: serviceType,
         followup_type: "medical_followup",
         condition_status: conditionStatus,
@@ -171,6 +173,14 @@ export default function HealthFollowupScreen() {
         consultation_id: consultationId,
         appointment_id: appointmentId,
       });
+
+      // No internet: kept on the phone and sent when the signal returns.
+      if (result.queued) {
+        Alert.alert(tr("outbox_kept_title", lang), tr("outbox_kept_message", lang), [
+          { text: "OK", onPress: () => router.back() },
+        ]);
+        return;
+      }
 
       Alert.alert(
         "Thank you!",

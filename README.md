@@ -78,6 +78,8 @@ screens/           larger screens used by routes (sign-in, forgot password, …)
 Components/        shared components (DuckOverlay for error screens, …)
 features/          self-contained areas (telemedicine, …)
 services/api/      one file per API area; client.ts adds the token and handles errors
+services/offlineOutbox.ts  bookings, event sign-ups and follow-ups kept with no signal, sent later
+services/offlineAnswers.ts Dr. Quack's answer book with no signal (have a nurse review it each release)
 store/             signed-in session (useAuthStore + authStorage), language
 hooks/             auth, biometrics, push notifications, read-aloud, …
 constants/i18n.ts  English / Tagalog / Pangasinan strings

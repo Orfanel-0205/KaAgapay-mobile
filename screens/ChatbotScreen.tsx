@@ -31,6 +31,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  chatRequestBody,
   deleteMobileChatSession,
   endMobileChatSession,
   fetchMobileChatMessages,
@@ -56,6 +57,9 @@ import {
 import { prepareChatPhoto } from "../services/chatPhoto";
 import { richTextRuns } from "../utils/richText";
 import type { ChatAttachment } from "../services/api/chatbot";
+import { isConnectionFailure, keepForLater } from "../services/offlineOutbox";
+import { offlineAnswer } from "../services/offlineAnswers";
+import { getCachedRhus } from "../services/api/rhus";
 
 const CHATBOT_ICON = require("../assets/chatbotdoctorquack.png");
 
@@ -288,6 +292,27 @@ const TEXTS: Record<string, Record<Lang, string>> = {
     en: "I cannot connect right now. Please try again later.",
     tl: "Hindi ako makakonekta ngayon. Pakisubukan ulit mamaya.",
     pag: "Agak makakonekta natan. Padasen lamet kayari.",
+  },
+  // Dr. Quack with no signal (services/offlineAnswers).
+  offline_answer_title: {
+    en: "(Offline answer: I have no internet right now.)",
+    tl: "(Offline na sagot: wala akong internet ngayon.)",
+    pag: "(Offline ya ebat: anggapoy internet ko natan.)",
+  },
+  offline_queued: {
+    en: "I kept your question and will send it to Dr. Quack when there is signal. The full answer will appear in History.",
+    tl: "Itinabi ko ang tanong mo at ipapadala kay Dr. Quack kapag may signal na. Makikita ang buong sagot sa History.",
+    pag: "Initaon ko so tepet mo tan ipawit ed si Dr. Quack no wala lay signal. Nanengneng so sankasakbayan ya ebat ed History.",
+  },
+  offline_attachment: {
+    en: "A voice note or photo cannot be sent without internet. Type your question so I can answer offline, or try again later.",
+    tl: "Hindi maipadala ang voice note o larawan nang walang internet. I-type ang tanong mo para masagot kita offline, o subukan ulit mamaya.",
+    pag: "Ag naipawit so voice note o litrato no anggapoy internet. I-type so tepet mo pian naebatan ta ka offline, o padasen lamet kayari.",
+  },
+  queued_question: {
+    en: "Question for Dr. Quack",
+    tl: "Tanong kay Dr. Quack",
+    pag: "Tepet ed si Dr. Quack",
   },
   book_appointment: {
     en: "Book Appointment",
@@ -1180,6 +1205,39 @@ export default function ChatbotScreen() {
       await loadSessions();
     } catch (error: any) {
       console.log("[ChatbotScreen] send failed:", error?.response?.data || error);
+
+      // No signal: answer from the book on the phone, and keep a typed
+      // question to send to Dr. Quack when the signal returns.
+      if (isConnectionFailure(error)) {
+        const rhus = await getCachedRhus();
+        let content: string;
+
+        if (attachment) {
+          content = `${t("offline_attachment", lang)}\n\n${offlineAnswer("", lang, rhus).text}`;
+        } else {
+          let kept = false;
+          try {
+            await keepForLater({
+              method: "post",
+              url: "/chat/message",
+              data: chatRequestBody({ message: text, sessionId: currentSessionId, appSection: "chatbot", language: lang }),
+              label: t("queued_question", lang),
+            });
+            kept = true;
+          } catch {
+            // Not signed in or storage full: the offline answer still helps.
+          }
+          content =
+            `${t("offline_answer_title", lang)}\n\n${offlineAnswer(text, lang, rhus).text}` +
+            (kept ? `\n\n${t("offline_queued", lang)}` : "");
+        }
+
+        setMessages((previous) => [
+          ...previous,
+          { id: `local-offline-${Date.now()}`, role: "assistant", content, timestamp: new Date().toISOString() },
+        ]);
+        return;
+      }
 
       const errorMessage: ChatMessage = {
         id: `local-error-${Date.now()}`,

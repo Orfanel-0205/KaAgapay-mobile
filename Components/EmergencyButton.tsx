@@ -24,6 +24,7 @@ import SirenIcon from "../assets/Siren.png";
 
 import { COLORS, FONTS } from "../constants/theme";
 import { tr, useLang } from "../constants/i18n";
+import { RHU_HOTLINES } from "../constants/hotlines";
 import { useResponsive, type Responsive } from "../utils/responsive";
 
 interface EmergencyButtonProps {
@@ -36,18 +37,10 @@ interface EmergencyContact {
   icon: ImageSourcePropType;
 }
 
-const EMERGENCY_CONTACTS: EmergencyContact[] = [
-  {
-    label: "RHU1 Emergency Hotline",
-    number: "09338678423",
-    icon: ContactIcon,
-  },
-  {
-    label: "RHU2 Emergency Hotline",
-    number: "(075) 632-7543",
-    icon: EmergencyIcon,
-  },
-];
+const EMERGENCY_CONTACTS: EmergencyContact[] = RHU_HOTLINES.map((hotline, index) => ({
+  ...hotline,
+  icon: index === 0 ? ContactIcon : EmergencyIcon,
+}));
 
 function usePulseAnimation() {
   const pulseAnim = useRef(new Animated.Value(1)).current;

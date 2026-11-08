@@ -142,6 +142,35 @@ export interface ChatAttachment {
   name: string;
 }
 
+/**
+ * A typed question as /chat/message takes it. Shared with the offline outbox,
+ * which keeps a question asked with no signal and sends it later.
+ */
+export function chatRequestBody(params: {
+  message: string;
+  sessionId?: string | null;
+  history?: ChatMessage[];
+  appSection?: string;
+  language?: string;
+}): Record<string, unknown> {
+  const user = useAuthStore.getState().user;
+
+  return {
+    message: params.message,
+    session_id: params.sessionId || undefined,
+    history: params.history ?? [],
+    audience: "resident",
+    source: "mobile",
+    context: {
+      app_section: params.appSection ?? "chatbot",
+      language: params.language,
+      barangay_id: user?.barangay_id,
+      barangay: user?.barangay,
+      source: "mobile",
+    },
+  };
+}
+
 export async function sendMobileChatMessage(params: {
   message: string;
   sessionId?: string | null;
@@ -213,14 +242,7 @@ export async function sendMobileChatMessage(params: {
     };
   }
 
-  const response = await apiClient.post<MobileChatResponse>("/chat/message", {
-    message: params.message,
-    session_id: params.sessionId || undefined,
-    history: params.history ?? [],
-    audience: "resident",
-    source: "mobile",
-    context,
-  });
+  const response = await apiClient.post<MobileChatResponse>("/chat/message", chatRequestBody(params));
 
   return {
     ...response.data,

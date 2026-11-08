@@ -752,6 +752,55 @@ export const STRINGS: Dict = {
     pag: "I-type so tepet mo...",
     en: "Type your question...",
   },
+
+  // Offline outbox (services/offlineOutbox, Components/OfflineBanner).
+  // The Pangasinan lines were written for this release: have a native
+  // speaker at the RHU read them before the next Play Store update.
+  outbox_offline: {
+    tl: "Walang internet. Itatabi muna sa phone mo ang ipapadala mo.",
+    pag: "Anggapoy internet. Itaon antis ed phone mo so ipawit mo.",
+    en: "No internet. What you send is kept on your phone for now.",
+  },
+  outbox_waiting: {
+    tl: "{n} naghihintay maipadala.",
+    pag: "{n} manalagey ya ipawit.",
+    en: "{n} waiting to be sent.",
+  },
+  outbox_send_now: {
+    tl: "Ipadala na",
+    pag: "Ipawit la",
+    en: "Send now",
+  },
+  outbox_refused: {
+    tl: "{n} hindi tinanggap ng RHU. Pindutin para makita kung bakit.",
+    pag: "{n} ag inawat na RHU. Pindut pian nanengneng no akin.",
+    en: "{n} not accepted by the RHU. Tap to see why.",
+  },
+  outbox_refused_title: {
+    tl: "Hindi tinanggap ng RHU",
+    pag: "Ag inawat na RHU",
+    en: "Not accepted by the RHU",
+  },
+  outbox_remove: {
+    tl: "Alisin",
+    pag: "Ekalen",
+    en: "Remove",
+  },
+  outbox_kept_title: {
+    tl: "Naitabi muna",
+    pag: "Initaon antis",
+    en: "Saved for later",
+  },
+  outbox_kept_message: {
+    tl: "Walang internet. Naitabi ito sa phone mo at kusang ipapadala kapag may signal na. Makikita mo ang status sa itaas ng app.",
+    pag: "Anggapoy internet. Initaon ya ed phone mo tan ipawit ya no wala lay signal. Nanengneng mo so status ed tagey na app.",
+    en: "No internet. This is kept on your phone and will be sent by itself when there is signal. You can see its status at the top of the app.",
+  },
+  outbox_profile_needs_internet: {
+    tl: "Hindi pa kumpleto ang health profile mo. Kumonekta sa internet para matapos ito bago mag-book.",
+    pag: "Ag ni kompleto so health profile mo. Kumonekta ed internet pian naupot antis ya mamook.",
+    en: "Your health profile is not complete yet. Connect to the internet to finish it before booking.",
+  },
 };
 
 export const tr = (key: string, lang: Lang): string =>

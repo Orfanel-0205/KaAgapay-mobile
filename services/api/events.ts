@@ -2,6 +2,7 @@
 // Ka-Agapay Mobile Events API
 
 import apiClient from "./client";
+import { sendOrQueue } from "../offlineOutbox";
 
 export type MobileEventType = "event" | "program" | "announcement";
 
@@ -167,6 +168,12 @@ export async function fetchPublishedEventById(
 
 export async function registerForEvent(id: number): Promise<void> {
   await apiClient.post(`/programs/${id}/register`);
+}
+
+/** Sign up now, or keep the sign-up on the phone until there is signal. */
+export async function registerForEventOrQueue(id: number, title: string): Promise<{ queued: boolean }> {
+  const result = await sendOrQueue({ method: "post", url: `/programs/${id}/register`, label: `Event: ${title}` });
+  return { queued: result.queued };
 }
 
 export async function cancelEventRegistration(id: number): Promise<void> {

@@ -12,7 +12,10 @@
 // The endpoint is open to any signed-in user and is the same one the dashboard
 // pickers are built from, so the two can no longer disagree.
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import apiClient from "./client";
+
+const CACHE_KEY = "kaagapay.rhus.v1";
 
 export interface MobileRhu {
   id: number;
@@ -74,7 +77,24 @@ export async function getMobileRhus(): Promise<MobileRhu[]> {
       .map(normalize)
       .filter((row): row is MobileRhu => row !== null);
 
-    return rows.length > 0 ? rows : FALLBACK_RHUS;
+    if (rows.length > 0) {
+      // Kept for the next time there is no signal: the booking form and
+      // Dr. Quack's offline answers then show the RHUs as they last were.
+      AsyncStorage.setItem(CACHE_KEY, JSON.stringify(rows)).catch(() => {});
+      return rows;
+    }
+
+    return FALLBACK_RHUS;
+  } catch {
+    return getCachedRhus();
+  }
+}
+
+/** The list as last loaded, or the built-in two when it never has been. */
+export async function getCachedRhus(): Promise<MobileRhu[]> {
+  try {
+    const saved = JSON.parse((await AsyncStorage.getItem(CACHE_KEY)) || "null");
+    return Array.isArray(saved) && saved.length > 0 ? saved : FALLBACK_RHUS;
   } catch {
     return FALLBACK_RHUS;
   }
